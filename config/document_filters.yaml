@@ -1,0 +1,10 @@
+# Document filter configuration
+# Controls how the admin document manager classifies and flags uploaded content.
+# Empty lists mean nothing is auto-flagged; add keywords here (or via the
+# admin interface) that are specific to your own domain/document set.
+
+bio_waste_keywords: []
+problematic_keywords: []
+exclude_keywords: []
+min_content_length: 100
+max_corruption_chars: 10

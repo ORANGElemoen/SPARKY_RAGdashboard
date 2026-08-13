@@ -649,7 +649,7 @@ class DocumentProcessingService:
             for i, chunk_text in enumerate(chunks):
                 cursor = conn.execute(
                     """
-                    INSERT INTO chunks (document_id, chunk_index, text,
+                    INSERT INTO chunks (document_id, chunk_index, text_content,
                                       character_count, word_count)
                     VALUES (?, ?, ?, ?, ?)
                 """,
@@ -715,11 +715,17 @@ class DocumentProcessingService:
 
                 cursor = conn.execute(
                     """
-                    INSERT INTO embeddings (chunk_id, embedding_data,
-                                          embedding_model, dimensions)
-                    VALUES (?, ?, ?, ?)
+                    INSERT INTO embeddings (chunk_id, document_id, embedding_vector,
+                                          embedding_model, vector_dimension)
+                    VALUES (?, ?, ?, ?, ?)
                 """,
-                    (chunk_id, compressed, "all-MiniLM-L6-v2", len(embedding_vector)),
+                    (
+                        chunk_id,
+                        document_id,
+                        compressed,
+                        "all-MiniLM-L6-v2",
+                        len(embedding_vector),
+                    ),
                 )
 
                 # Create Embedding object for vector index

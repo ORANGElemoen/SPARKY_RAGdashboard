@@ -1,0 +1,13 @@
+# Voice pipeline requirements (optional)
+# Adds speech-to-text and text-to-speech for the voice tutor endpoint
+# (POST /api/v1/voice/query). Not required for the core text-based RAG
+# system - install this only if you want voice support.
+#
+# Install with:
+#   pip install -r deployment/requirements/voice_requirements.txt
+
+# Speech-to-text (runs fully offline once the model is downloaded)
+faster-whisper>=1.0.0,<2.0.0
+
+# Text-to-speech (runs fully offline, small ONNX voice models)
+piper-tts>=1.2.0,<2.0.0

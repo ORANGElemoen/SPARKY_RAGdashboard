@@ -363,6 +363,20 @@
                 </div>
             </div>
             
+            <!-- Language Settings -->
+            <div class="models-section">
+                <h2 class="section-title">🌐 Language Settings</h2>
+                <p style="margin-bottom: 20px; color: #666;">
+                    Controls the language used for AI answers and prompts. To add a new
+                    language, add a file under <code>config/languages/</code> — it will
+                    appear here automatically.
+                </p>
+                <div style="display: flex; gap: 10px; align-items: center;">
+                    <select id="language-select" class="form-input" style="padding: 8px 12px; border-radius: 6px; border: 1px solid #ddd;"></select>
+                    <button class="btn btn-primary" onclick="saveLanguage()">Save</button>
+                </div>
+            </div>
+
             <!-- Models Section -->
             <div class="models-section">
                 <h2 class="section-title">🤖 Available Models</h2>
@@ -458,7 +472,7 @@
             alert.className = `alert alert-${type}`;
             alert.innerHTML = message;
             container.appendChild(alert);
-            
+
             // Auto-remove after 5 seconds
             setTimeout(() => {
                 if (alert.parentNode) {
@@ -466,21 +480,29 @@
                 }
             }, 5000);
         }
-        
+
+        async function getCsrfToken() {
+            const response = await fetch('/api/v1/csrf-token');
+            const data = await response.json();
+            return data.csrf_token;
+        }
+
         // Model management functions
         async function switchModel(modelKey) {
             if (isProcessing) return;
-            
+
             const reason = prompt(`Why are you switching to ${modelKey}?`, 'Testing performance');
             if (!reason) return;
-            
+
             showLoading();
-            
+
             try {
+                const csrfToken = await getCsrfToken();
                 const response = await fetch('/admin/models/switch', {
                     method: 'POST',
                     headers: {
                         'Content-Type': 'application/json',
+                        'X-CSRF-Token': csrfToken
                     },
                     body: JSON.stringify({
                         model_key: modelKey,
@@ -519,8 +541,12 @@
             showAlert(`📥 Installing ${modelKey}... This may take several minutes.`, 'warning');
             
             try {
+                const csrfToken = await getCsrfToken();
                 const response = await fetch(`/admin/models/${modelKey}/install`, {
-                    method: 'POST'
+                    method: 'POST',
+                    headers: {
+                        'X-CSRF-Token': csrfToken
+                    }
                 });
                 
                 const result = await response.json();
@@ -585,8 +611,12 @@
             showLoading();
             
             try {
+                const csrfToken = await getCsrfToken();
                 const response = await fetch('/admin/system/restart', {
-                    method: 'POST'
+                    method: 'POST',
+                    headers: {
+                        'X-CSRF-Token': csrfToken
+                    }
                 });
                 
                 const result = await response.json();
@@ -605,9 +635,63 @@
             }
         }
         
+        // Language settings
+        async function loadLanguageSettings() {
+            try {
+                const response = await fetch('/admin/settings/language');
+                const data = await response.json();
+
+                const select = document.getElementById('language-select');
+                select.innerHTML = '';
+                data.available_languages.forEach(lang => {
+                    const option = document.createElement('option');
+                    option.value = lang.code;
+                    option.textContent = lang.name;
+                    if (lang.code === data.current_language) {
+                        option.selected = true;
+                    }
+                    select.appendChild(option);
+                });
+            } catch (error) {
+                showAlert(`❌ Error loading language settings: ${error.message}`, 'danger');
+            }
+        }
+
+        async function saveLanguage() {
+            if (isProcessing) return;
+
+            const language = document.getElementById('language-select').value;
+            showLoading();
+
+            try {
+                const csrfToken = await getCsrfToken();
+                const response = await fetch('/admin/settings/language', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                        'X-CSRF-Token': csrfToken
+                    },
+                    body: JSON.stringify({ language })
+                });
+
+                const result = await response.json();
+
+                if (result.success) {
+                    showAlert(`✅ ${result.message}`, 'success');
+                } else {
+                    showAlert(`❌ ${result.message || 'Failed to update language'}`, 'danger');
+                }
+            } catch (error) {
+                showAlert(`❌ Error saving language: ${error.message}`, 'danger');
+            } finally {
+                hideLoading();
+            }
+        }
+
         // Initialize page
         document.addEventListener('DOMContentLoaded', function() {
             showAlert('🛠️ Admin interface loaded. All models are available for testing in production.', 'success');
+            loadLanguageSettings();
         });
     </script>
 </body>

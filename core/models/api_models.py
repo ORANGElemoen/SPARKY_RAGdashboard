@@ -17,6 +17,7 @@ class DocumentResponse(BaseModel):
     size: int
     content_type: str
     status: str
+    obfuscated_id: Optional[str] = None
 
 
 class DocumentUpdate(BaseModel):

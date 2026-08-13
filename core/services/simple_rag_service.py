@@ -6,11 +6,96 @@ Clean, maintainable RAG system with AI answers only
 import logging
 import os
 from datetime import datetime
+from pathlib import Path
 from typing import Any, Dict, List
+
+import yaml
 
 from .response_cache import ResponseCache
 
 logger = logging.getLogger(__name__)
+
+DEFAULT_LANGUAGE_STRINGS = {
+    "name": "English",
+    "prompt_template": (
+        "You are a friendly, encouraging STEM tutor for children. Use the documents "
+        "below to help answer the question in a simple, fun, and engaging way, with "
+        "everyday examples a child can relate to. If the documents don't fully cover "
+        "the question, use your own knowledge to fill the gaps in the same fun, "
+        "encouraging style.\n\n"
+        "DOCUMENTS:\n{context}\n\nQUESTION: {query}\n\n"
+        "ANSWER (simple, fun, and encouraging, for a child):"
+    ),
+    "general_prompt_template": (
+        "You are a friendly, encouraging STEM tutor for children. Answer the "
+        "question in a simple, fun, and engaging way using your own knowledge. "
+        "Explain science, technology, engineering, mathematics, biology, or "
+        "electricity concepts with simple language and relatable, everyday "
+        "examples. Encourage curiosity and make learning exciting.\n\n"
+        "QUESTION: {query}\n\n"
+        "ANSWER (simple, fun, and encouraging, for a child):"
+    ),
+    "no_answer_generated": "No answer could be generated.",
+    "answer_generation_error": "An error occurred while generating the answer.",
+    "voice_retry_prompt": "I didn't quite catch that. Can you try asking again?",
+    "voice_error_prompt": "Sorry, something went wrong while I was thinking. Can you try again?",
+    "sources_label": "Sources",
+    "source_line": "[Source {id}] Document {document_id} - {url}",
+    "truncated_notice": "[...truncated for performance...]",
+}
+
+
+def load_language_strings() -> Dict[str, str]:
+    """Load the active language's prompt/response strings.
+
+    Falls back to English defaults if config is missing or malformed,
+    so a bad language config never breaks query answering.
+    """
+    try:
+        lang_config_path = Path("config/language_config.yaml")
+        current_language = "en"
+        if lang_config_path.exists():
+            with open(lang_config_path, "r", encoding="utf-8") as f:
+                lang_config = yaml.safe_load(f) or {}
+            current_language = lang_config.get("current_language", "en")
+
+        strings_path = Path(f"config/languages/{current_language}.yaml")
+        if strings_path.exists():
+            with open(strings_path, "r", encoding="utf-8") as f:
+                strings = yaml.safe_load(f) or {}
+            merged = dict(DEFAULT_LANGUAGE_STRINGS)
+            merged.update(strings)
+            return merged
+
+        logger.warning(
+            f"Language file for '{current_language}' not found, using English defaults"
+        )
+    except Exception as e:
+        logger.warning(f"Failed to load language config, using English defaults: {e}")
+
+    return dict(DEFAULT_LANGUAGE_STRINGS)
+
+
+_SENTENCE_END_CHARS = ".!?…\"'”)"
+
+
+def _trim_to_complete_sentence(text: str) -> str:
+    """Trim a truncated LLM response back to its last complete sentence.
+
+    Generation is capped by max_tokens, so long answers can be cut off
+    mid-sentence. If that happens, drop the trailing fragment rather than
+    showing the child half a sentence - but only if doing so keeps at
+    least half the answer, otherwise leave it as-is.
+    """
+    text = text.rstrip()
+    if not text or text[-1] in _SENTENCE_END_CHARS:
+        return text
+
+    last_end = max(text.rfind(c) for c in ".!?")
+    if last_end != -1 and last_end + 1 >= len(text) * 0.5:
+        return text[: last_end + 1]
+
+    return text
 
 
 class RAGConfig:
@@ -60,15 +145,14 @@ class SimpleRAGService:
             # 2. Search for relevant documents
             search_results = await self._search_documents(query)
 
-            if not search_results:
-                return self._no_results_response()
-
-            # 3. Generate AI answer
+            # 3. Generate AI answer (grounded in documents if any were found,
+            # otherwise the tutor falls back to its own general knowledge)
             ai_response = await self._generate_answer(query, search_results)
 
             # 4. Format response
             response = {
                 "answer": ai_response["text"],
+                "spoken_answer": ai_response.get("spoken_text", ai_response["text"]),
                 "sources": ai_response["sources"],
                 "timestamp": datetime.utcnow().isoformat(),
                 "query": query,
@@ -111,32 +195,6 @@ class SimpleRAGService:
             for item in search_results.items:
                 similarity = item.metadata.get("similarity_score", 0.0)
 
-                # EXCLUDE documents with training instructions that confuse the LLM
-                content_lower = item.text_content.lower()
-                if (
-                    "only use information" in content_lower
-                    or "zero-hallucination" in content_lower
-                    or "guidelines for following" in content_lower
-                    or "zusätzliche richtlinien" in content_lower
-                    or item.document_id == 60
-                ):
-                    logger.info(
-                        f"Skipping document {item.document_id} (contains training instructions)"
-                    )
-                    continue
-
-                # EXCLUDE computer science content that doesn't contain bio waste info
-                if (
-                    "javascript" in content_lower
-                    or "console.log" in content_lower
-                    or "cloud computing" in content_lower
-                    or "52 stunden informatik" in content_lower
-                ):
-                    logger.info(
-                        f"Skipping document {item.document_id} (computer science content)"
-                    )
-                    continue
-
                 if similarity >= self.config.similarity_threshold:
                     relevant_results.append(
                         {
@@ -160,20 +218,19 @@ class SimpleRAGService:
         self, query: str, search_results: List[Dict]
     ) -> Dict[str, Any]:
         """Generate AI answer from search results"""
+        strings = load_language_strings()
         try:
             if not search_results:
-                return {
-                    "text": "Keine relevanten Informationen gefunden.",
-                    "sources": [],
-                    "confidence": 0.0,
-                }
+                # No relevant documents: fall back to the tutor's own
+                # general knowledge instead of refusing to answer
+                return await self._generate_general_answer(query, strings)
 
-            # Prepare context
+            # Prepare context from the actual retrieved document chunks
             context_parts = []
             sources = []
 
             for i, result in enumerate(search_results, 1):
-                context_parts.append(f"[Quelle {i}]: {result['text']}")
+                context_parts.append(f"[{i}]: {result['text']}")
                 sources.append(
                     {
                         "id": i,
@@ -189,8 +246,7 @@ class SimpleRAGService:
             max_context_length = 2000  # Increased to provide meaningful context
             if len(context) > max_context_length:
                 context = (
-                    context[:max_context_length]
-                    + "\n\n[...gekürzt für bessere Performance...]"
+                    context[:max_context_length] + "\n\n" + strings["truncated_notice"]
                 )
 
             # TEMPORARILY DISABLE CACHE to debug
@@ -198,70 +254,40 @@ class SimpleRAGService:
             # if cached_response:
             #     return cached_response
 
-            # DEBUG: Show what documents are being used
-            logger.info(f"CONTEXT CONTENT FOR DEBUG: {context[:800]}...")
+            logger.debug(f"Context for prompt: {context[:800]}...")
 
-            # TEMPORARY FIX: Use clean bio waste content directly
-            bio_waste_content = """
-Was gehört in den Bioabfall-Container?
-Das wird gesammelt:
-• Obst, Früchte, Salat, Gemüse
-• Schnittblumen, Laub, Sträucher, Rasenschnitt
-• Wurst, Fleisch, Fisch, Knochen
-• Brot, Teigwaren
-• Kaffee- und Teesatz (mit Filter/Beutel)
-• Eier samt Eierschalen und -karton
-• Getreide- und Hülsenfrüchte
+            prompt = strings["prompt_template"].format(context=context, query=query)
 
-Entsorgung organischer Abfälle:
-Bioabfälle richtig entsorgen und Geld sparen. Separat gesammelter Bioabfall
-entlastet die Haushaltskasse und ist günstiger als die Entsorgung im Gebührensack.
-Organisches Material ist ein kostbarer Rohstoff.
-"""
-
-            # Generate response with clean content
-            prompt = f"""Based on these documents about bio waste disposal, answer the question:
-
-DOCUMENTS:
-{bio_waste_content}
-
-QUESTION: {query}
-
-ANSWER:"""
-
-            # Ultra-aggressive optimization for slow machines
             response = self.llm_client.generate_answer(
                 query=prompt,
-                context="",  # Context is in the prompt
-                max_tokens=256,  # Reasonable limit for meaningful answers
-                temperature=0.1,  # Low temp for consistency
+                context="",  # Context is already embedded in the prompt
+                max_tokens=600,  # Enough room to finish a full explanation
+                temperature=0.4,  # Some room for a fun, engaging tone
                 max_retries=1,  # Single attempt only
+                is_complete_prompt=True,
             )
 
-            answer_text = response if response else "Keine Antwort generiert."
+            answer_text = response if response else strings["no_answer_generated"]
+            answer_text = _trim_to_complete_sentence(answer_text)
+            spoken_text = answer_text  # Citations below are for display, not speech
 
-            # Add source footer (avoid Unicode issues on Windows)
+            # Add source footer
             if sources and self.config.require_sources:
-                try:
-                    source_footer = "\n\n📚 Quellen:\n" + "\n".join(
-                        [
-                            f"[Quelle {s['id']}] Dokument {s['document_id']} - {s['download_url']}"
-                            for s in sources
-                        ]
-                    )
-                    answer_text += source_footer
-                except UnicodeEncodeError:
-                    # Fallback without emoji for Windows compatibility
-                    source_footer = "\n\nQuellen:\n" + "\n".join(
-                        [
-                            f"[Quelle {s['id']}] Dokument {s['document_id']} - {s['download_url']}"
-                            for s in sources
-                        ]
-                    )
-                    answer_text += source_footer
+                source_footer = f"\n\n{strings['sources_label']}:\n" + "\n".join(
+                    [
+                        strings["source_line"].format(
+                            id=s["id"],
+                            document_id=s["document_id"],
+                            url=s["download_url"],
+                        )
+                        for s in sources
+                    ]
+                )
+                answer_text += source_footer
 
             result = {
                 "text": answer_text,
+                "spoken_text": spoken_text,
                 "sources": sources,
                 "confidence": max(r["similarity"] for r in search_results),
                 "debug_context": (
@@ -278,20 +304,46 @@ ANSWER:"""
         except Exception as e:
             logger.error(f"AI answer generation failed: {e}")
             return {
-                "text": "Fehler bei der Antwortgenerierung.",
+                "text": strings["answer_generation_error"],
+                "spoken_text": strings["answer_generation_error"],
                 "sources": [],
                 "confidence": 0.0,
             }
 
-    def _no_results_response(self) -> Dict[str, Any]:
-        """Response when no relevant documents found"""
-        return {
-            "answer": "Dazu finde ich keine Informationen in den verfügbaren Dokumenten.",
-            "sources": [],
-            "timestamp": datetime.utcnow().isoformat(),
-            "confidence": 0.0,
-            "query": "",
-        }
+    async def _generate_general_answer(
+        self, query: str, strings: Dict[str, str]
+    ) -> Dict[str, Any]:
+        """Answer using the tutor's own knowledge when no uploaded document is relevant"""
+        try:
+            prompt = strings["general_prompt_template"].format(query=query)
+
+            response = self.llm_client.generate_answer(
+                query=prompt,
+                context="",
+                max_tokens=600,  # Enough room to finish a full explanation
+                temperature=0.6,  # More creative/exploratory for open-ended teaching
+                max_retries=1,
+                is_complete_prompt=True,
+            )
+
+            answer_text = response if response else strings["no_answer_generated"]
+            answer_text = _trim_to_complete_sentence(answer_text)
+
+            return {
+                "text": answer_text,
+                "spoken_text": answer_text,
+                "sources": [],
+                "confidence": 0.0,
+            }
+
+        except Exception as e:
+            logger.error(f"General answer generation failed: {e}")
+            return {
+                "text": strings["answer_generation_error"],
+                "spoken_text": strings["answer_generation_error"],
+                "sources": [],
+                "confidence": 0.0,
+            }
 
     def _error_response(self, message: str) -> Dict[str, Any]:
         """Response for errors"""

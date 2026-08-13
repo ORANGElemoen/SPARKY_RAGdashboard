@@ -1,334 +1,186 @@
-# CLAUDE.md - RAG System Project Settings
+# CLAUDE.md - STEM Voice Tutor Project Settings
 
 ## 🎯 Project Overview
 
-**Open Source RAG System** - A complete locally-hosted Retrieval-Augmented Generation system with Ollama LLM integration. This is a production-ready project prioritizing reliability, ease of use, and comprehensive document management capabilities.
+**STEM Voice Tutor** - A locally-hosted, voice-driven STEM tutor for children,
+built with low-connectivity deployments in mind (developed with Sub-Saharan
+Africa in mind). A child asks a question by voice; the system transcribes it,
+answers it in a friendly, encouraging way grounded in uploaded STEM
+textbooks (falling back to general knowledge when nothing relevant is
+uploaded), and speaks the answer back. Everything runs fully offline/locally
+— no cloud LLM, STT, or TTS APIs.
 
-**Core Mission**: Create a bulletproof RAG system that works perfectly for the core use case: "Upload documents → Ask questions → Get intelligent answers" with zero crashes, maximum reliability, and comprehensive admin capabilities for any domain.
+This project started as a generic "upload documents, ask questions" RAG
+system and has been substantially repurposed. The original document-QA
+interface still works (Text Chat tab), but the voice pipeline (Voice Chat
+tab, `/api/v1/voice/query`) is now the primary feature.
+
+**For the full current state, recent bug fixes and why they mattered, and
+known rough edges, read [PROJECT_HANDOFF.md](PROJECT_HANDOFF.md) first.**
+This file (CLAUDE.md) is the shorter, ongoing-guidance version.
+
+**Next phase (not started)**: ESP32 firmware (mic + speaker + LCD) that
+calls the same voice API over local WiFi. Hardware specifics aren't decided.
 
 ## 🏗️ Project Structure
 
-### **Production Architecture**
 ```
-C:\Users\THE\open-source-rag-system\
-├── core/                      # Modular FastAPI application
-│   ├── main.py               # FastAPI entry point
-│   ├── ollama_client.py      # Ollama LLM client with robust error handling
-│   ├── routers/              # API endpoints
-│   │   ├── query.py          # Single AI-only query endpoint
-│   │   ├── documents.py      # Document management
-│   │   ├── system.py         # System status
-│   │   └── llm.py           # LLM management
-│   ├── services/             # Business logic
-│   │   ├── simple_rag_service.py  # Core RAG processing
-│   │   ├── document_service.py    # Document processing
-│   │   └── query_service.py       # Query processing
-│   ├── repositories/         # Data access layer
-│   └── di/                  # Dependency injection
-├── run_core.py              # Production startup script
-├── requirements.txt         # Python dependencies
-├── static/index.html        # Web interface (AI answers only)
-├── data/                    # SQLite databases and document storage
-│   ├── rag_database.db      # Main database
-│   ├── audit.db            # Audit logging
-│   └── storage/            # Document storage (uploads/, processed/)
-├── config/llm_config.yaml  # LLM configuration
-├── tests/                   # Comprehensive test suite
-├── .archive/               # Legacy files (safely archived)
-└── CLAUDE.md              # This file (AI assistant instructions)
+open-source-rag-system/
+├── core/
+│   ├── main.py                    # FastAPI app: security headers, CSRF, router registration
+│   ├── ollama_client.py           # Ollama LLM client
+│   ├── routers/
+│   │   ├── query.py               # POST /api/v1/query (text) + get_rag_service DI
+│   │   ├── voice.py               # POST /api/v1/voice/query (STT -> RAG -> TTS)
+│   │   ├── documents.py           # Upload, list, download, chunk retrieval
+│   │   ├── admin.py               # Model/language/database admin endpoints
+│   │   └── document_manager.py    # Document content analysis/cleanup
+│   ├── services/
+│   │   ├── simple_rag_service.py  # Core tutor logic - READ THIS FIRST for RAG behavior
+│   │   ├── voice_service.py       # faster-whisper (STT) + piper (TTS), lazy singletons
+│   │   ├── document_service.py    # Upload validation, chunking, embeddings
+│   │   └── query_service.py       # Trimmed to just get_document_chunks() - see note below
+│   ├── repositories/              # Data access layer (SQLite-backed)
+│   ├── di/                        # Dependency injection container/service config
+│   └── templates/                 # Admin dashboard, document management HTML
+├── static/
+│   ├── index.html                 # Main UI: Text Chat + Voice Chat tabs, single page
+│   └── voice_samples/             # Sample TTS clips for comparing voices
+├── config/
+│   ├── llm_config.yaml            # Ollama model catalog + default_model
+│   ├── language_config.yaml       # current_language (en/de)
+│   ├── languages/*.yaml           # Prompt templates + response strings, one file per language
+│   └── document_filters.yaml      # Admin document-filter keywords (empty by default)
+├── data/                          # gitignored: storage/, piper_voices/, *.db
+├── deployment/requirements/
+│   ├── simple_requirements.txt    # Core deps
+│   └── voice_requirements.txt     # Optional: faster-whisper, piper-tts
+├── PROJECT_HANDOFF.md             # Detailed state/handoff doc - read for full context
+└── simple_api.py                  # Entry point (imports core.main.main())
 ```
 
 ## 🧠 AI Assistant Guidelines
 
-### **Core Principles When Working on This Project**
+### Core Principles
+1. **Reliability first**: every error handled gracefully, no crashes under normal use.
+2. **The tutor never just refuses to answer**: this is a deliberate change from
+   the original "zero-hallucination, documents-only" design. It grounds
+   answers in uploaded documents when relevant, and falls back to the LLM's
+   general knowledge in the same friendly tone otherwise. Don't reintroduce a
+   hard refusal path without discussing it — it's the wrong shape for a kids'
+   tutor.
+3. **Fully local/offline**: no cloud LLM/STT/TTS APIs. This is a deliberate
+   constraint (deployment target has limited/costly internet), not an
+   oversight — don't suggest cloud alternatives as the default.
+4. **Multi-language is data, not code**: language-specific strings and
+   prompts live in `config/languages/*.yaml`. Never hardcode English or
+   German text into Python for anything user-facing — add/edit a language
+   file instead. See `load_language_strings()` in `simple_rag_service.py`.
+5. **Be suspicious of leftover behavior from this project's previous life**
+   as a Swiss municipal bio-waste assistant. Several serious bugs this
+   session came from exactly that: hardcoded German content, hardcoded
+   off-topic keyword filters, hardcoded "zero-hallucination" refusal
+   messages. If you find German text, waste-disposal references, or
+   "Quelle"/"Zitiere"/zero-hallucination language in code you're touching,
+   it's probably leftover cruft, not intentional — check before assuming
+   it's load-bearing. `core/services/query_service.py` had ~700 lines of
+   exactly this kind of unreachable leftover code (including a second,
+   independent hardcoded-German answer-generation path) trimmed down to the
+   one method that's actually used (`get_document_chunks`) - if you're
+   tempted to "restore" something from git history in that file, check
+   first whether it was ever actually called by a router.
 
-1. **Reliability First**: Zero crashes under normal use - every error must be handled gracefully
-2. **MVP Focus**: Perfect core functionality before adding complexity
-3. **User Experience**: 5-minute setup time for non-technical users
-4. **Graceful Degradation**: System works even when components fail (e.g., Ollama unavailable)
-5. **Security Minded**: Validate inputs, sanitize data, prevent injection attacks
+### Error Handling Philosophy
+- Never crash: catch and handle every exception gracefully.
+- Cleanup on failure: remove partial files, reset state on errors.
+- Fallback mechanisms: e.g. voice deps are optional - `core/routers/voice.py`
+  imports `faster_whisper`/`piper` lazily at request time, not at module
+  level, so the server still starts fine without them installed; hitting the
+  endpoint without them returns a clean 503 with the install command instead
+  of crashing.
 
-### **Development Standards**
+### Before changing `core/main.py` security headers
+This has bitten us twice: the `Permissions-Policy` header blocked
+`getUserMedia` (microphone) outright until explicitly set to
+`microphone=(self)`, and the `Content-Security-Policy` header had no
+`media-src` directive (falling back to `default-src 'self'`), which
+silently blocked both `data:` and `blob:` audio URLs in the browser with no
+thrown JS exception - it just looked like "audio won't play, 0:00
+duration" with nothing in the console except a CSP violation. If you add
+new browser capabilities (camera, geolocation, new resource types), check
+these headers.
 
-#### **Error Handling Philosophy**
-- **Never crash**: Every exception must be caught and handled gracefully
-- **Fail informatively**: Clear error messages that help users understand and fix issues
-- **Cleanup on failure**: Remove partial files, reset state on errors
-- **Retry with backoff**: Temporary failures should be retried intelligently
-- **Fallback mechanisms**: Always provide alternative when primary method fails
+### CSRF pattern
+Any POST/PUT/DELETE to `/api/v1/*` or `/admin/*` requires an `X-CSRF-Token`
+header (see `csrf_middleware` in `core/main.py`). Every piece of frontend
+JS that makes a state-changing request needs to call
+`GET /api/v1/csrf-token` first and send the token back - there's a
+`getCsrfToken()` helper duplicated in `static/index.html`,
+`admin_dashboard.html`, and `document_management.html`. If you add a new
+POST call anywhere in the frontend, it needs this or it will silently
+403/500.
 
-#### **Code Quality Requirements**
-- Input validation for all user data
-- Rate limiting on all endpoints
-- Comprehensive logging with proper levels
-- File size and type validation
-- Request sanitization (XSS, injection prevention)
-- Proper resource cleanup (files, connections)
-
-#### **Testing Standards**
-- All critical paths must have error handling tests
-- Test with malformed inputs, oversized files, network failures
-- Verify fallback mechanisms work correctly
-- Test concurrent usage scenarios
-- Memory usage should remain reasonable under load
-
-### **Technology Stack**
-
-#### **Backend Architecture**
-- **Framework**: Modular FastAPI with dependency injection (`core/main.py`)
-- **API Design**: Single AI-only endpoint (`/api/v1/query`) with zero-hallucination protection
-- **LLM Integration**: Ollama client with retry logic and health checks (`core/ollama_client.py`)
-- **RAG Engine**: SimpleRAGService with 4 environment variables for configuration
-- **Vector Search**: FAISS with sentence transformers for high-performance similarity search
-- **Document Processing**: PyPDF2, python-docx, pandas with robust error handling
-- **Storage**: SQLite databases (`data/rag_database.db`, `data/audit.db`) with file system storage
-- **Architecture**: Clean Architecture with repositories, services, and dependency injection
-
-#### **Frontend**
-- **Interface**: Single-page HTML with vanilla JavaScript (`static/index.html`)
-- **Features**: **AI answers only** - single mode with professional zero-hallucination responses
-- **UX**: Source citations, confidence indicators, document download links, system status
-- **Design**: Clean, professional interface optimized for production use
-
-#### **Security & Reliability**
-- **Input Validation**: Filename sanitization, content type checking
-- **Rate Limiting**: Per-endpoint limits to prevent abuse
-- **File Security**: Size limits, extension validation, malware prevention
-- **Error Recovery**: Graceful degradation, automatic retries, cleanup
-
-#### **Monitoring & Error Tracking**
-- **Sentry MCP**: AI-powered error monitoring and root cause analysis
-  - Install: `claude mcp add --transport http sentry https://mcp.sentry.dev/mcp`
-  - OAuth authentication with Sentry organization
-  - Real-time error tracking and performance monitoring
-  - Automated root cause analysis with Seer AI agent
-  - Full trace context for debugging (errors, logs, spans)
-  - Integration with existing development workflows
-
-## 📋 Current Development Status
-
-### **✅ Production-Ready Features**
-- ✅ **Modular Architecture**: Clean FastAPI application with dependency injection
-- ✅ **Single AI-Only Endpoint**: `/api/v1/query` with zero-hallucination protection
-- ✅ **Zero-Hallucination System**: Professional RAG with source citations and confidence scoring
-- ✅ **SimpleRAGService**: Clean, maintainable RAG engine with 4 environment variables
-- ✅ **Admin Interface**: Comprehensive admin dashboard with document management
-- ✅ **Document Management**: Content analysis, filtering, and cleanup tools with configurable keywords
-- ✅ **Model Management**: Easy switching between Ollama models via admin interface
-- ✅ **Database Configuration**: Support for SQLite, PostgreSQL, and MySQL via admin interface
-- ✅ **Document download links** with secure `/api/v1/documents/{id}/download` endpoint
-- ✅ **Production Frontend**: Single-mode interface with AI answers only
-- ✅ **SQLite Storage**: Persistent databases with sentence transformer vector search
-- ✅ **Repository Organization**: Clean codebase with legacy files safely archived
-- ✅ **Comprehensive Testing**: Test suite with production validation
-- ✅ **Error Handling**: Graceful failure handling with proper cleanup
-- ✅ **Security Features**: Input validation, rate limiting, XSS prevention
-
-### **🔄 Performance Optimization**
-- ⏳ **Response Time**: AI generation speed optimization for local machines
-- ⏳ **Caching**: Query result caching for repeated questions
-- ⏳ **Memory Management**: Optimize memory usage for large document sets
-
-### **📋 Future Enhancements** (Post-MVP)
-1. **Authentication**: Optional user authentication system
-2. **Advanced Monitoring**: Detailed performance metrics and alerts
-3. **Multi-Model Support**: Additional LLM model options
-4. **API Extensions**: Additional endpoints for specific use cases
-5. **Deployment Tools**: Docker containers and cloud deployment scripts
-
-## 🎯 Success Criteria for MVP
-
-### **Reliability (Critical)**
-- ✅ Zero crashes under normal usage
-- ✅ Graceful handling of all error conditions
-- ✅ Proper resource cleanup on failures
-- ✅ Fallback mechanisms when services unavailable
-
-### **Usability (Critical)**
-- 🔄 60-second setup time for new users
-- ✅ Clear error messages and recovery instructions
-- ✅ Works smoothly with 1-1000 documents
-- 🔄 Helpful onboarding and example queries
-
-### **Security (Important)**
-- ✅ Input validation and sanitization
-- ✅ File upload security (size, type, content validation)
-- ✅ Rate limiting to prevent abuse
-- 🔄 Optional authentication for production use
-
-### **Performance (Important)**
-- ✅ Response times <10s for all operations
-- 🔄 Memory usage stays reasonable with large document sets
-- 🔄 Caching for repeated queries
-- ✅ Handles concurrent users properly
+### Technology Stack
+- **Backend**: FastAPI (`core/main.py`), dependency injection (`core/di/`)
+- **LLM**: Ollama via `core/ollama_client.py` (default model: `mistral`,
+  configured in `config/llm_config.yaml`)
+- **RAG**: `SimpleRAGService` (`core/services/simple_rag_service.py`) -
+  hybrid grounded/general-knowledge answering, language-aware prompts
+- **STT**: `faster-whisper` (local, CPU, model size configurable)
+- **TTS**: `piper-tts` (local, ONNX voice models in `data/piper_voices/`)
+- **Vector search**: sentence-transformers + numpy-based similarity search
+- **Storage**: SQLite (`data/rag_database.db`), audit log
+  (`data/audit.db`)
+- **Frontend**: single-page vanilla JS/HTML (`static/index.html`), two tabs
 
 ## 🔧 Common Development Tasks
 
-### **Running the Production System**
+### Running the system
 ```bash
-# Start the production RAG system
-python run_core.py
-
-# Test the system
-python test_simple_rag.py
-python test_ollama_integration.py
-python -m pytest tests/
-
-# Check system status
-curl http://localhost:8000/api/v1/status
-curl http://localhost:8000/api/v1/health
+python simple_api.py
+# → http://127.0.0.1:8001/ui       (Text Chat + Voice Chat)
+# → http://127.0.0.1:8001/admin    (models, language settings)
+# → http://127.0.0.1:8001/admin/documents/management
 ```
+Requires Ollama running with at least one model pulled. Voice features
+require `pip install -r deployment/requirements/voice_requirements.txt`
+plus a downloaded Piper voice model (see README).
 
-### **Key Configuration Settings**
-```python
-# SimpleRAGService Environment Variables (Production)
-RAG_SIMILARITY_THRESHOLD=0.3    # Similarity threshold for document matching
-RAG_MAX_RESULTS=5               # Maximum number of source documents
-RAG_REQUIRE_SOURCES=true        # Require source citations (zero-hallucination)
-RAG_MAX_QUERY_LENGTH=500        # Maximum query length for validation
+Frontend changes (`static/*.html`, `core/templates/*.html`) take effect on
+browser refresh - these are read fresh from disk on every request, no
+server restart needed. Backend Python changes require a restart
+(`reload=False` in `core/main.py`'s `uvicorn.run`, deliberately, per the
+original project's "avoid import issues" comment).
 
-# LLM Configuration (config/llm_config.yaml)
-default_model: arlesheim-german  # Fine-tuned model for municipality
-timeout: 300                     # LLM timeout in seconds
-max_retries: 3                  # Retry attempts for failed requests
+### Key API Endpoints
+- `POST /api/v1/query` - text question -> answer with sources
+- `POST /api/v1/voice/query` - audio file -> `{transcript, answer_text, audio_base64}`
+- `POST /api/v1/documents` - upload a document
+- `GET /api/v1/documents/{id}/chunks` - paginated chunk viewer (uses the
+  trimmed `QueryProcessingService`)
+- `GET/POST /admin/settings/language` - active response language
+- `GET/POST /admin/models`, `POST /admin/models/switch` - Ollama model management
 
-# Database Configuration (automatic)
-database_path: data/rag_database.db    # Main SQLite database
-audit_database: data/audit.db          # Audit logging database
-storage_path: data/storage/             # Document storage directory
-```
-
-### **Error Handling Patterns**
-```python
-# Always use this pattern for operations that might fail
-try:
-    # Main operation
-    result = risky_operation()
-    
-    # Validate result
-    if not result:
-        raise ValueError("Operation failed")
-        
-    return result
-    
-except SpecificException as e:
-    # Log specific error
-    logger.error(f"Specific error: {e}")
-    # Cleanup if needed
-    cleanup_resources()
-    # Return graceful fallback or raise HTTPException
-    
-except Exception as e:
-    # Log unexpected error
-    logger.error(f"Unexpected error: {e}")
-    # Cleanup if needed
-    cleanup_resources()
-    # Always provide user-friendly error message
-    raise HTTPException(status_code=500, detail="Operation failed, please try again")
-```
-
-## 🚨 Critical Guidelines
-
-### **When Adding New Features**
-1. **Error Handling First**: Plan failure modes before implementing
-2. **Input Validation**: Sanitize and validate all inputs
-3. **Resource Management**: Ensure proper cleanup on success and failure
-4. **Testing**: Test failure scenarios, not just happy path
-5. **Documentation**: Update error messages and troubleshooting docs
-
-### **When Debugging Issues**
-1. **Check Logs**: Review error logs for patterns
-2. **Verify Dependencies**: Ensure Ollama, models, files are available
-3. **Test Isolation**: Isolate issues to specific components
-4. **Reproduce**: Create minimal reproduction case
-5. **Document**: Add prevention for similar issues
-
-### **MVP Focus Areas**
-- **Fix before feature**: Resolve reliability issues before adding features
-- **User experience**: Prioritize clear error messages and recovery
-- **Documentation**: Focus on setup and troubleshooting guides
-- **Testing**: Validate edge cases and error conditions
-- **Performance**: Ensure system scales to 100+ documents
-
-## 🔧 Admin Interface Features
-
-### **Document Management**
-The system includes comprehensive document management capabilities:
-
-### **Content Analysis**
-- **Automatic Categorization**: Classify documents by content type using configurable keywords
-- **Quality Assessment**: Identify problematic documents (training instructions, corrupted files, off-topic content)
-- **Confidence Scoring**: Rate document relevance and quality
-
-### **Configurable Filtering**
-```yaml
-# Document filters are configurable via admin interface:
-target_keywords:      # Documents to keep (domain-specific)
-  - "relevant", "important", "official"
-problematic_keywords: # Training instructions to remove
-  - "zero-hallucination", "guidelines", "training"
-exclude_keywords:     # Off-topic content to filter
-  - "programming", "software", "unrelated"
-```
-
-### **Management Tools**
-- **Individual Document Operations**: View, edit, delete specific documents
-- **Bulk Operations**: Cleanup multiple documents with filtering criteria
-- **Dry Run Capability**: Preview changes before applying them
-- **Content Preview**: View document content and metadata
-
-### **Model and Database Management**
-The admin interface provides:
-1. **Model Switching**: Easy switching between Ollama models
-2. **Database Configuration**: SQLite, PostgreSQL, MySQL support
-3. **System Monitoring**: Health checks and performance metrics
-4. **Configuration Backup**: Download and restore system settings
-
-## 📞 Quick Reference
-
-### **File Locations (Production)**
-- **Main API**: `core/main.py` - FastAPI application entry point
-- **Production Startup**: `run_core.py` - Production server startup script
-- **LLM Client**: `core/ollama_client.py` - Ollama integration with retry logic
-- **RAG Engine**: `core/services/simple_rag_service.py` - Core RAG processing logic
-- **Query Router**: `core/routers/query.py` - Single `/api/v1/query` endpoint
-- **Frontend**: `static/index.html` - Production web interface (AI answers only)
-- **Tests**: `tests/` directory and `test_*.py` files in root
-- **Storage**: `data/storage/uploads/` and `data/storage/processed/`
-- **Databases**: `data/rag_database.db` and `data/audit.db`
-- **Configuration**: `config/llm_config.yaml` - LLM model settings
-- **Legacy Files**: `.archive/` directory - safely archived old code
-
-### **Key API Endpoints**
-- **Main Query**: `POST /api/v1/query` - Single AI-only endpoint with zero-hallucination
-- **Document Upload**: `POST /api/v1/documents` - Upload and process documents
-- **Document Download**: `GET /api/v1/documents/{id}/download` - Secure document download
-- **System Status**: `GET /api/v1/status` - System health and configuration
-- **Health Check**: `GET /api/v1/health` - Simple health check endpoint
-
-### **Key Services & Functions**
-- **RAG Processing**: `SimpleRAGService.answer_query()` - Main RAG processing logic
-- **Document Management**: `DocumentService` in `core/services/document_service.py`
-- **LLM Integration**: `OllamaClient.generate_answer()` - LLM response generation
-- **Vector Search**: FAISS-based similarity search in repositories
-- **Error Handling**: Comprehensive error handling throughout all services
-
-### **Common Issues & Solutions**
-- **System won't start**: Check `python simple_api.py` - verify all dependencies installed
-- **Ollama not available**: Check if Ollama service running, model downloaded
-- **No models available**: Install models via admin interface or manually with `ollama pull <model>`
-- **File upload fails**: Check file size limits, storage permissions, database connectivity
-- **No search results**: Ensure documents uploaded, processed, and indexed
-- **Slow AI responses**: Performance optimization needed - consider faster models or caching
-- **Download links not working**: Verify document exists in database and `/api/v1/documents/{id}/download` endpoint
-- **Database errors**: Check SQLite database files are accessible, or configure PostgreSQL/MySQL via admin
-- **Admin interface issues**: Access admin at `/admin` - check for proper authentication and permissions
-- **Document management problems**: Use admin interface to analyze, filter, and clean documents
+### Common Issues & Solutions
+- **numpy install fails on newer Python**: `numpy<2.0.0` has no wheels for
+  very new Python versions and will try to build from source (needs a C
+  compiler). Requirements are pinned `numpy<3.0.0` for this reason - don't
+  tighten that pin without checking wheel availability first.
+- **Ollama not available / no models**: `ollama pull <model>` and check
+  `config/llm_config.yaml`'s `default_model` actually matches an installed
+  model (`ollama list`) - a mismatch here silently degrades every query.
+- **Voice audio won't play in browser**: check the CSP `media-src`
+  directive first (see above) before assuming it's a JS bug.
+- **Answers cut off mid-sentence**: check `max_tokens` isn't being clamped
+  somewhere in `ollama_client.py`'s request options - this happened once
+  already (see PROJECT_HANDOFF.md, bug #8).
+- **Document upload fails silently / 500s**: check the `chunks` and
+  `embeddings` table column names in `core/repositories/sqlite_repository.py`
+  actually match what `document_service.py` and `vector_repository.py`
+  insert/select - these have drifted before.
 
 ---
 
-**Remember**: This is now a production-ready system with comprehensive admin capabilities. The core mission remains: reliable RAG system with zero-hallucination protection, professional AI answers, and domain-agnostic document management.
-
-**Last Updated**: January 2025 
-**Version**: 2.0-Production
-**Focus**: Production-ready system with comprehensive admin interface, document management, and domain-agnostic capabilities
+**See [PROJECT_HANDOFF.md](PROJECT_HANDOFF.md) for the detailed list of
+bugs fixed this session (with root causes), known rough edges, and what to
+hand off to a fresh Claude session.**

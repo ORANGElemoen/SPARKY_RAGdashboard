@@ -28,6 +28,10 @@ class ModelSelection(BaseModel):
     reason: Optional[str] = None
 
 
+class LanguageSelection(BaseModel):
+    language: str
+
+
 class ModelConfig(BaseModel):
     name: str
     context_length: int
@@ -106,21 +110,19 @@ async def admin_dashboard(request: Request):
         current_model = config.get("default_model", "unknown")
         available_models = list(config.get("models", {}).keys())
 
-        # Get system stats using direct client creation
-
-        # Check model availability
+        # Check model availability with a single Ollama query, then compare
+        # locally instead of creating a client + network call per model
         model_status = {}
+        try:
+            installed_models = OllamaClient().list_models()
+        except Exception as e:
+            installed_models = []
+            logger.warning(f"Failed to list installed Ollama models: {e}")
+
         for model_key in available_models:
-            try:
-                # Temporarily switch to check availability
-                temp_client = OllamaClient()
-                temp_client.model = config["models"][model_key]["name"]
-                is_available = temp_client.is_available()
-                model_status[model_key] = (
-                    "Available" if is_available else "Not Downloaded"
-                )
-            except Exception as e:
-                model_status[model_key] = f"Error: {str(e)}"
+            model_name = config["models"][model_key]["name"]
+            is_available = any(model_name in name for name in installed_models)
+            model_status[model_key] = "Available" if is_available else "Not Downloaded"
 
         return templates.TemplateResponse(
             "admin_dashboard.html",
@@ -152,20 +154,22 @@ async def get_available_models():
         current_model = config.get("default_model")
         models = config.get("models", {})
 
-        # Add status for each model using direct client creation
+        # Check status for each model with a single Ollama query, then
+        # compare locally instead of creating a client + network call per model
+        try:
+            installed_models = OllamaClient().list_models()
+        except Exception as e:
+            installed_models = []
+            logger.warning(f"Failed to list installed Ollama models: {e}")
 
         for model_key, model_config in models.items():
-            try:
-                # Check if model is downloaded
-                temp_client = OllamaClient()
-                temp_client.model = model_config["name"]
-                models[model_key]["status"] = (
-                    "available" if temp_client.is_available() else "not_downloaded"
-                )
-                models[model_key]["is_current"] = model_key == current_model
-            except Exception as e:
-                models[model_key]["status"] = "error"
-                models[model_key]["error"] = str(e)
+            is_available = any(
+                model_config["name"] in name for name in installed_models
+            )
+            models[model_key]["status"] = (
+                "available" if is_available else "not_downloaded"
+            )
+            models[model_key]["is_current"] = model_key == current_model
 
         return {
             "current_model": current_model,
@@ -455,6 +459,80 @@ async def update_filter_config(config: DocumentFilterConfig):
         return {"success": True, "message": "Filter configuration updated successfully"}
     except Exception as e:
         logger.error(f"Error updating filter config: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.get("/settings/language")
+async def get_language_settings():
+    """Get current response language and all available languages.
+
+    Available languages are discovered from config/languages/*.yaml, so
+    adding a new language file automatically makes it selectable here.
+    """
+    try:
+        lang_config_path = Path("config/language_config.yaml")
+        current_language = "en"
+        if lang_config_path.exists():
+            with open(lang_config_path, "r", encoding="utf-8") as f:
+                lang_config = yaml.safe_load(f) or {}
+            current_language = lang_config.get("current_language", "en")
+
+        languages_dir = Path("config/languages")
+        available_languages = []
+        if languages_dir.exists():
+            for lang_file in sorted(languages_dir.glob("*.yaml")):
+                try:
+                    with open(lang_file, "r", encoding="utf-8") as f:
+                        lang_data = yaml.safe_load(f) or {}
+                    available_languages.append(
+                        {
+                            "code": lang_file.stem,
+                            "name": lang_data.get("name", lang_file.stem),
+                        }
+                    )
+                except Exception as e:
+                    logger.warning(f"Skipping invalid language file {lang_file}: {e}")
+
+        return {
+            "current_language": current_language,
+            "available_languages": available_languages,
+        }
+    except Exception as e:
+        logger.error(f"Error getting language settings: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.post("/settings/language")
+async def update_language_settings(selection: LanguageSelection):
+    """Switch the language used for RAG prompts and response text"""
+    try:
+        lang_file = Path(f"config/languages/{selection.language}.yaml")
+        if not lang_file.exists():
+            raise HTTPException(
+                status_code=400,
+                detail=f"Unknown language '{selection.language}' "
+                f"(no config/languages/{selection.language}.yaml)",
+            )
+
+        lang_config_path = Path("config/language_config.yaml")
+        lang_config_path.parent.mkdir(exist_ok=True)
+        with open(lang_config_path, "w", encoding="utf-8") as f:
+            yaml.dump(
+                {"current_language": selection.language},
+                f,
+                default_flow_style=False,
+                allow_unicode=True,
+            )
+
+        logger.info(f"Response language switched to: {selection.language}")
+        return {
+            "success": True,
+            "message": f"Language switched to {selection.language}",
+        }
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Error updating language settings: {e}")
         raise HTTPException(status_code=500, detail=str(e))
 
 

@@ -600,7 +600,7 @@ class ProductionVectorRepository(IVectorSearchRepository):
             # Safe SQL construction: placeholders is just repeated '?' characters
             query = f"""
                 SELECT e.id as embedding_id, c.id as chunk_id, c.document_id,
-                       c.text, c.chunk_index
+                       c.text_content, c.chunk_index
                 FROM embeddings e
                 JOIN chunks c ON e.chunk_id = c.id
                 WHERE e.id IN ({placeholders})
@@ -643,8 +643,8 @@ class ProductionVectorRepository(IVectorSearchRepository):
 
             cursor = conn.execute(
                 """
-                SELECT e.id, e.chunk_id, e.embedding_data, e.embedding_model, e.dimensions,
-                       c.document_id, c.text, c.chunk_index
+                SELECT e.id, e.chunk_id, e.embedding_vector, e.embedding_model, e.vector_dimension,
+                       c.document_id, c.text_content, c.chunk_index
                 FROM embeddings e
                 JOIN chunks c ON e.chunk_id = c.id
                 ORDER BY e.id

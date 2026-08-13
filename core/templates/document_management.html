@@ -540,6 +540,12 @@
             setTimeout(() => alert.remove(), 5000);
         }
 
+        async function getCsrfToken() {
+            const response = await fetch('/api/v1/csrf-token');
+            const data = await response.json();
+            return data.csrf_token;
+        }
+
         function addKeyword(type) {
             const inputId = `${type}KeywordInput`;
             const input = document.getElementById(inputId);
@@ -581,9 +587,10 @@
 
         async function saveFilterConfig() {
             try {
+                const csrfToken = await getCsrfToken();
                 const response = await fetch('/admin/documents/filter-config', {
                     method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
+                    headers: { 'Content-Type': 'application/json', 'X-CSRF-Token': csrfToken },
                     body: JSON.stringify(currentConfig)
                 });
                 
@@ -603,9 +610,10 @@
             loading.classList.add('active');
             
             try {
+                const csrfToken = await getCsrfToken();
                 const response = await fetch('/admin/documents/cleanup', {
                     method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
+                    headers: { 'Content-Type': 'application/json', 'X-CSRF-Token': csrfToken },
                     body: JSON.stringify({
                         remove_training: document.getElementById('removeTraining').checked,
                         remove_offtopic: document.getElementById('removeOfftopic').checked,
@@ -717,12 +725,13 @@
             const config = getDbConfig();
             
             try {
+                const csrfToken = await getCsrfToken();
                 const response = await fetch('/admin/database/test', {
                     method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
+                    headers: { 'Content-Type': 'application/json', 'X-CSRF-Token': csrfToken },
                     body: JSON.stringify(config)
                 });
-                
+
                 const result = await response.json();
                 if (result.success) {
                     showAlert(result.message, 'success');
@@ -736,11 +745,12 @@
 
         async function saveDbConfig() {
             const config = getDbConfig();
-            
+
             try {
+                const csrfToken = await getCsrfToken();
                 const response = await fetch('/admin/database/config', {
                     method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
+                    headers: { 'Content-Type': 'application/json', 'X-CSRF-Token': csrfToken },
                     body: JSON.stringify(config)
                 });
                 

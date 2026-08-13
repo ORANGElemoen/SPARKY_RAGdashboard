@@ -14,7 +14,7 @@ from pathlib import Path
 from fastapi import FastAPI, HTTPException, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.middleware.trustedhost import TrustedHostMiddleware
-from fastapi.responses import HTMLResponse
+from fastapi.responses import HTMLResponse, JSONResponse
 from fastapi.staticfiles import StaticFiles
 from starlette.middleware.sessions import SessionMiddleware
 
@@ -30,6 +30,7 @@ from .routers import (
     query,
     system,
     tenants,
+    voice,
 )
 
 # Import DI system
@@ -306,6 +307,7 @@ async def security_headers_middleware(request: Request, call_next):
         "script-src 'self' 'unsafe-inline' 'unsafe-eval'; "
         "style-src 'self' 'unsafe-inline'; "
         "img-src 'self' data: https:; "
+        "media-src 'self' data: blob:; "
         "font-src 'self'; "
         "connect-src 'self'; "
         "frame-ancestors 'none';"
@@ -316,7 +318,7 @@ async def security_headers_middleware(request: Request, call_next):
     response.headers["X-Frame-Options"] = "DENY"
     response.headers["X-XSS-Protection"] = "1; mode=block"
     response.headers["Referrer-Policy"] = "strict-origin-when-cross-origin"
-    response.headers["Permissions-Policy"] = "geolocation=(), microphone=(), camera=()"
+    response.headers["Permissions-Policy"] = "geolocation=(), microphone=(self), camera=()"
 
     # HSTS (only add if HTTPS)
     if request.url.scheme == "https":
@@ -360,7 +362,9 @@ async def csrf_middleware(request: Request, call_next):
                 csrf_token = None
 
     if not csrf_token or not validate_csrf_token(csrf_token):
-        raise HTTPException(status_code=403, detail="CSRF token missing or invalid")
+        return JSONResponse(
+            status_code=403, content={"detail": "CSRF token missing or invalid"}
+        )
 
     response = await call_next(request)
     return response
@@ -400,6 +404,7 @@ app.include_router(document_manager.router)
 app.include_router(metrics.router)
 app.include_router(async_processing.router)
 app.include_router(compliance.router)
+app.include_router(voice.router)
 if PROGRESS_ROUTER_AVAILABLE:
     app.include_router(progress.router)
 if CACHE_ROUTER_AVAILABLE:
@@ -482,12 +487,13 @@ async def get_ui():
         )
 
 
-if __name__ == "__main__":
+def main():
+    """Run the application with uvicorn"""
     import uvicorn
 
     # Get configuration
     host = config.API_HOST if CONFIG_AVAILABLE and config else "127.0.0.1"
-    port = config.API_PORT if CONFIG_AVAILABLE and config else 8002
+    port = config.API_PORT if CONFIG_AVAILABLE and config else 8001
 
     # Run the application
     uvicorn.run(
@@ -497,3 +503,7 @@ if __name__ == "__main__":
         reload=False,  # Disable reload to avoid import issues
         log_level="info",
     )
+
+
+if __name__ == "__main__":
+    main()

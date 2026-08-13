@@ -65,10 +65,10 @@ class OllamaClient:
         if OFFICIAL_OLLAMA_AVAILABLE:
             # Configure timeout in the official client
             self.client = ollama.Client(host=base_url, timeout=timeout)
-            logger.info(f"Initialized official Ollama client with {timeout}s timeout")
+            logger.debug(f"Initialized official Ollama client with {timeout}s timeout")
         else:
             self.client = None
-            logger.warning("Using requests fallback for Ollama communication")
+            logger.debug("Using requests fallback for Ollama communication")
 
         # Try to use LLM manager for model selection
         try:
@@ -79,9 +79,9 @@ class OllamaClient:
             if model is None:
                 # Use model from config
                 model = self.llm_manager.get_current_model()
-                logger.info(f"Using model from config: {model}")
+                logger.debug(f"Using model from config: {model}")
         except ImportError:
-            logger.info("LLM manager not available, using auto-detection")
+            logger.debug("LLM manager not available, using auto-detection")
             self.llm_manager = None
 
         # Load model from config if not specified
@@ -94,7 +94,7 @@ class OllamaClient:
         else:
             self.model = model
 
-        logger.info(f"Initialized Ollama client: {base_url}, model: {self.model}")
+        logger.debug(f"Initialized Ollama client: {base_url}, model: {self.model}")
 
     def _load_model_from_config(self) -> Optional[str]:
         """
@@ -119,7 +119,7 @@ class OllamaClient:
 
             if default_model_key in models:
                 model_name = models[default_model_key]["name"]
-                logger.info(
+                logger.debug(
                     f"Loaded model from config: {model_name} (key: {default_model_key})"
                 )
                 return model_name
@@ -405,16 +405,19 @@ class OllamaClient:
         max_tokens: int = 2048,
         temperature: float = 0.7,
         max_retries: int = 3,
+        is_complete_prompt: bool = False,
     ) -> Optional[str]:
         """
         Generate an answer using Ollama with official client for better timeout handling
 
         Args:
-            query: User's question
+            query: User's question, or a fully-formed prompt if is_complete_prompt is True
             context: Relevant document context
             max_tokens: Maximum tokens to generate
             temperature: Generation temperature (0.0-1.0)
             max_retries: Maximum number of retry attempts
+            is_complete_prompt: If True, use `query` as the final prompt as-is
+                instead of wrapping it in a model-specific template
 
         Returns:
             Optional[str]: Generated answer or None if failed
@@ -423,18 +426,16 @@ class OllamaClient:
             logger.warning("Ollama not available for answer generation")
             return None
 
-        # Check if query is already a complete prompt (from RAG service)
-        if "Beantworte die Frage" in query or "Kontext:" in query or "Frage:" in query:
-            # Use the complete prompt as-is from RAG service
+        if is_complete_prompt:
+            # Caller (e.g. SimpleRAGService) already built the final prompt
             prompt = query
-            logger.info(f"Using RAG service prompt (length: {len(prompt)})")
+            logger.debug(f"Using pre-built prompt (length: {len(prompt)})")
         else:
             # Create RAG prompt for simple queries
             prompt = self._create_rag_prompt(query, context)
-            logger.info(f"Created new RAG prompt (length: {len(prompt)})")
+            logger.debug(f"Created new RAG prompt (length: {len(prompt)})")
 
-        # Debug: Log the actual prompt being used
-        logger.info(f"Final prompt preview: {prompt[:200]}...")
+        logger.debug(f"Final prompt preview: {prompt[:200]}...")
 
         # Validate inputs
         if not prompt or not prompt.strip():
@@ -470,14 +471,10 @@ class OllamaClient:
                     model=self.model,
                     prompt=prompt,
                     options={
-                        "num_predict": min(
-                            max_tokens, 256
-                        ),  # Ultra-aggressive token limit for speed
-                        "temperature": min(
-                            temperature, 0.1
-                        ),  # Ultra-low temp for fastest responses
+                        "num_predict": max_tokens,
+                        "temperature": temperature,
                         "top_p": 0.9,
-                        "top_k": 20,  # Ultra-aggressive token limit for speed
+                        "top_k": 40,
                         "stop": ["\n\nHuman:", "\n\nQuestion:", "\n\nUser:"],
                     },
                     stream=False,
@@ -528,14 +525,10 @@ class OllamaClient:
                     "model": self.model,
                     "prompt": prompt,
                     "options": {
-                        "num_predict": min(
-                            max_tokens, 256
-                        ),  # Ultra-aggressive token limit for speed
-                        "temperature": min(
-                            temperature, 0.1
-                        ),  # Ultra-low temp for fastest responses
+                        "num_predict": max_tokens,
+                        "temperature": temperature,
                         "top_p": 0.9,
-                        "top_k": 20,  # Ultra-aggressive token limit for speed
+                        "top_k": 40,
                         "stop": ["\n\nHuman:", "\n\nQuestion:", "\n\nUser:"],
                     },
                     "stream": False,
@@ -742,13 +735,13 @@ Nach Analyse der Dokumente:"""
 
         else:
             # Simple, clear prompt that works well with smaller models
-            prompt = f"""Basierend auf den folgenden Dokumenten:
+            prompt = f"""Based on the following documents:
 
 {context}
 
-Frage: {query}
+Question: {query}
 
-Antwort:"""
+Answer:"""
 
         return prompt
 

@@ -1,0 +1,5 @@
+# Selects which file under config/languages/ is used for RAG prompts
+# and response text. To add a new language, drop a new file in
+# config/languages/ (e.g. fr.yaml) and it will show up automatically
+# in the admin Settings page.
+current_language: en

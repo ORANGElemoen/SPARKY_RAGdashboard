@@ -15,7 +15,7 @@ pandas>=2.1.0,<3.0.0
 
 # AI/ML for embeddings and similarity
 sentence-transformers>=2.2.0,<3.0.0
-numpy>=1.24.0,<2.0.0
+numpy>=1.24.0,<3.0.0
 scikit-learn>=1.3.0,<2.0.0
 
 # HTTP requests for Ollama

@@ -1,289 +1,233 @@
-# Open Source RAG System
+# STEM Voice Tutor
 
-A production-ready Retrieval-Augmented Generation (RAG) system with local LLM integration using Ollama. This system allows you to upload documents, ask questions, and get intelligent answers based on your document collection.
+A locally-hosted, voice-driven STEM tutor built for children in low-connectivity
+areas (developed with Sub-Saharan Africa deployments in mind). A child asks a
+question by voice; the system transcribes it, answers it in a fun, encouraging
+way grounded in your uploaded STEM textbooks (or its own general knowledge when
+nothing relevant is uploaded), and speaks the answer back — all running fully
+offline on local hardware, with no cloud APIs and no per-query cost.
 
-![RAG System Demo](https://img.shields.io/badge/Status-Production%20Ready-brightgreen)
-![Version](https://img.shields.io/badge/Version-2.0.0-blue)
+It started as a generic "upload documents, ask questions" RAG system and has
+since been repurposed specifically for this use case. The text-based document
+Q&A interface still works and is still useful on its own, but the voice pipeline
+is now the primary feature.
+
+![Status](https://img.shields.io/badge/Status-Active%20Development-yellow)
 ![Python](https://img.shields.io/badge/Python-3.8%2B-orange)
 ![License](https://img.shields.io/badge/License-MIT-green)
 
 ## Table of Contents
 
+- [How it works](#how-it-works)
 - [Features](#features)
 - [Quick Start](#quick-start)
+- [Voice Pipeline Setup](#voice-pipeline-setup)
 - [Admin Interface](#admin-interface)
-- [Documentation](#documentation)
-- [Architecture](#architecture)
-- [Development](#development)
-- [Contributing](#contributing)
+- [API Usage](#api-usage)
+- [Project Structure](#project-structure)
+- [What's next](#whats-next)
 - [License](#license)
+
+## How it works
+
+```
+Child speaks a question
+        │
+        ▼
+Speech-to-text (faster-whisper, local, offline)
+        │
+        ▼
+RAG tutor: answers using uploaded documents when relevant,
+falls back to general knowledge otherwise (SimpleRAGService)
+        │
+        ▼
+Text-to-speech (Piper, local, offline)
+        │
+        ▼
+Spoken answer + on-screen/LCD text, with source citations
+shown (not read aloud) when the answer came from a document
+```
+
+Today, this is testable end-to-end from a browser tab (using your computer's
+own microphone/speakers as a stand-in). The long-term target is a physical
+device — an ESP32 microcontroller with a mic, speaker, and LCD screen — that
+calls the exact same API over the local network; that hardware/firmware isn't
+built yet.
 
 ## Features
 
-### Core Functionality
-- **Document Upload and Processing**: Support for PDF, DOCX, TXT, and CSV files
-- **Intelligent Question Answering**: Uses Ollama LLM for context-aware responses
-- **Vector Search**: Fast similarity search using sentence transformers
-- **Hybrid Search**: Combines vector similarity with keyword matching
-- **Real-time Processing**: Asynchronous document processing for better performance
-- **Smart Answer Engine**: Advanced context extraction and answer generation
-- **Zero-Hallucination Design**: Only provides answers based on uploaded documents
+### Tutor behavior
+- **Hybrid answering**: grounds answers in your uploaded documents when
+  relevant, and answers from general knowledge in the same friendly tone when
+  nothing relevant has been uploaded — it never just refuses to answer a child.
+- **Kid-friendly persona**: prompts are written for a friendly, encouraging
+  STEM tutor explaining science, technology, engineering, math, biology, and
+  electricity with simple language and everyday examples.
+- **Source citations** are shown in the on-screen answer when documents were
+  used, but never read aloud in the spoken response.
+- **Multi-language, extensible**: prompt templates and response strings live
+  in `config/languages/*.yaml` (currently English and German). Adding a new
+  language is adding one file — no code changes — and it's selectable live
+  from the admin Settings page.
 
-### Admin Interface & Management
-- **Comprehensive Admin Dashboard**: Model switching, system monitoring, and configuration
-- **Document Management**: Content analysis, filtering, and cleanup tools
-- **Configurable Filtering**: Domain-agnostic keyword-based document filtering
-- **Database Configuration**: Support for SQLite, PostgreSQL, and MySQL
-- **Single Document Management**: View, edit, and delete individual documents
-- **System Health Monitoring**: Real-time status and performance metrics
+### Voice pipeline
+- **Speech-to-text**: `faster-whisper`, fully local/offline, CPU-friendly.
+- **Text-to-speech**: `piper-tts`, fully local/offline, small ONNX voice
+  models with several English voices to choose from.
+- **Single endpoint** (`POST /api/v1/voice/query`) takes an audio recording
+  and returns transcript + answer text + spoken answer (base64 WAV) — the
+  same contract the future ESP32 firmware will call.
 
-### Technical Features
-- **RESTful API**: Built with FastAPI for high performance
-- **Graceful Degradation**: Falls back to vector search when LLM unavailable
-- **Comprehensive Error Handling**: Robust error recovery and user feedback
-- **Rate Limiting**: Prevents abuse and ensures fair usage
-- **Input Validation**: Security-focused validation of all inputs
-- **Document Management**: Full CRUD operations for documents
-- **Persistent Storage**: SQLite database with optional PostgreSQL/MySQL support
-- **Multi-Model Support**: Easy switching between different Ollama models
-- **Performance Optimizations**: Caching, optimized search, and streaming responses
+### Document handling
+- Upload PDF, DOCX, TXT, MD, or CSV files; automatic chunking and embedding
+  via sentence-transformers, stored in SQLite with FAISS/numpy-based vector
+  search.
+- Admin document manager with configurable content filters (nothing is
+  auto-flagged by default — you define your own keyword rules if you want
+  any).
 
-## System Requirements
-
-### Minimum Requirements
-- **Operating System**: Windows 10/11, Linux, or macOS
-- **Python**: 3.8 or higher
-- **RAM**: 8GB minimum (16GB recommended)
-- **Storage**: 10GB free space
-- **CPU**: 4 cores recommended
-
-### Software Dependencies
-- **Ollama**: For local LLM inference
-- **Python Libraries**: See `simple_requirements.txt`
+### Admin interface
+- Model switching between installed Ollama models, with live availability
+  checks.
+- Language selection (see above).
+- Document management: view, analyze, filter, and clean up uploaded
+  documents.
+- Database configuration (SQLite by default; PostgreSQL/MySQL supported).
 
 ## Quick Start
 
 ### Prerequisites
+- Python 3.10+ (developed against 3.14)
+- [Ollama](https://ollama.com/download), with at least one model pulled
+  (e.g. `ollama pull mistral`)
 
-- **Python 3.8+**
-- **Ollama** (for AI generation) - [Download here](https://ollama.com/download)
-- **Git** (for cloning)
-
-### 1. Installation
+### 1. Install
 
 ```bash
-# Clone repository
-git clone https://github.com/thenzler/open-source-rag-system.git
+git clone <this-repository-url>
 cd open-source-rag-system
 
-# Install dependencies
-pip install -r simple_requirements.txt
-
-# Install Ollama models (optional but recommended)
-ollama pull phi3-mini    # Fast, lightweight model
-ollama pull llama3.2:1b  # Ultra-fast model
-ollama pull mistral      # High-quality general model
+pip install -r requirements.txt
 ```
 
-### 2. Start the System
+### 2. Run
 
 ```bash
-# Start API server
 python simple_api.py
-# Server runs on http://localhost:8001
-
-# Open web interface
-# Visit: http://localhost:8001
+# → http://127.0.0.1:8001/ui     (main UI: Text Chat + Voice Chat tabs)
+# → http://127.0.0.1:8001/admin  (model management, language settings)
 ```
 
-### 3. Upload Documents
+### 3. Upload documents and ask questions
 
-1. Open http://localhost:8001 in your browser
-2. Click "Choose Files" and select PDF/DOCX/TXT files
-3. Wait for processing to complete
-4. Start asking questions!
+Open the UI, upload a few PDFs (textbooks, guides, whatever you want the
+tutor grounded in), then either type a question in the **Text Chat** tab or
+hold the record button in the **Voice Chat** tab and ask out loud.
 
-### 4. Access Admin Interface
+## Voice Pipeline Setup
+
+Voice support is an optional layer on top of the core system — install it
+separately:
 
 ```bash
-# Visit the admin interface at:
-# http://localhost:8001/admin
+pip install -r deployment/requirements/voice_requirements.txt
 
-# Features available:
-# - Model switching and configuration
-# - Document management and analysis  
-# - System monitoring and health checks
-# - Database configuration
+# Download a text-to-speech voice (one-time; several are available, see
+# https://github.com/rhasspy/piper/blob/master/VOICES.md)
+python -m piper.download_voices en_US-hfc_female-medium --download-dir data/piper_voices
 ```
+
+The speech-to-text model (`faster-whisper`, size configurable via the
+`WHISPER_MODEL_SIZE` env var, default `base`) downloads automatically on
+first use. The TTS voice is configurable via the `PIPER_VOICE` env var.
+
+Both models are loaded once per server process and kept in memory — the
+first voice request after a restart will be slower than subsequent ones
+while they load.
 
 ## Admin Interface
 
-The system includes a comprehensive admin interface for managing your RAG system:
+Visit `/admin` for:
+- **Model management** — switch between installed Ollama models, install new
+  ones, see live availability.
+- **Language settings** — pick the active response language; add new ones by
+  dropping a file in `config/languages/`.
 
-### Document Management
-- **Content Analysis**: Automatically categorize and analyze document quality
-- **Configurable Filtering**: Set up domain-specific keywords for document classification
-- **Cleanup Tools**: Remove problematic or off-topic documents
-- **Individual Management**: View, edit, and delete specific documents
-
-### Model Management
-```bash
-# Access admin interface at: http://localhost:8001/admin
-
-# Available features:
-# - Switch between different Ollama models
-# - Monitor model availability and status
-# - Download configuration backups
-# - View system health and performance metrics
-```
-
-### Database Configuration
-- **Multiple Database Support**: SQLite (default), PostgreSQL, MySQL
-- **Connection Testing**: Verify database connectivity before saving
-- **Migration Tools**: Easy switching between database types
-- **Backup and Restore**: Configuration download and restore capabilities
-
-### Use Cases
-This RAG system is perfect for:
-- **Knowledge Management**: Company documentation and policies
-- **Customer Support**: FAQ and help documentation
-- **Research**: Academic papers and research materials
-- **Legal**: Contract and document analysis
-- **Healthcare**: Medical documentation and guidelines
-- **Education**: Course materials and educational content
-
-## 📚 Documentation
-
-### Quick Navigation
-- **[Setup Guide](SIMPLE_RAG_README.md)** - Quick setup and usage guide
-- **[API Reference](docs/API_DOCUMENTATION.md)** - Complete API documentation
-- **[Domain Configuration](docs/DOMAIN_CONFIGURATION_GUIDE.md)** - Configure for specific domains
-- **[Testing Guide](TESTING.md)** - Testing framework and guidelines
-- **[CLAUDE.md](CLAUDE.md)** - AI assistant project guidelines
-
-### Documentation Structure
-```
-📁 docs/           - Technical documentation
-📁 core/           - Main application code
-📁 tests/          - Test suite and examples
-📁 config/         - Configuration files
-📁 static/         - Web interface assets
-```
-
-### Key Documents
-- **[Architecture Overview](docs/ARCHITECTURE.md)** - System design and components
-- **[Deployment Guide](docs/DEPLOYMENT.md)** - Production deployment
-- **[Security Guidelines](docs/SECURITY.md)** - Security best practices
-- **[Troubleshooting](docs/TROUBLESHOOTING.md)** - Common issues and solutions
-
-## Core Principles
-
-1. **Source Verifiability**: All responses must be traceable to source documents
-2. **Data Privacy**: Complete local processing - no external API calls required
-3. **Zero Hallucination**: Only return information that exists in the knowledge base
-4. **Performance**: Sub-second response times for most queries
-5. **Scalability**: Support for thousands of documents and concurrent users
-6. **Reliability**: Graceful degradation when services are unavailable
-7. **Security**: Input validation and rate limiting built-in
+Visit `/admin/documents/management` for:
+- **Content analysis** — categorize and flag documents using your own
+  configurable keyword rules (`config/document_filters.yaml`).
+- **Cleanup tools** — remove documents matching your filter criteria, with a
+  dry-run mode.
 
 ## API Usage
 
-### **Test the System via API**
 ```bash
-# Upload a document
-curl -X POST "http://localhost:8001/api/v1/documents" \
-  -H "Content-Type: multipart/form-data" \
-  -F "file=@example.pdf"
-
-# Query documents
+# Ask a text question
 curl -X POST "http://localhost:8001/api/v1/query" \
   -H "Content-Type: application/json" \
-  -d '{"query": "What is the main topic?"}'
+  -d '{"query": "What is electricity?"}'
 
-# Get system health
+# Ask a voice question (send an audio file, get transcript + text + spoken answer back)
+curl -X POST "http://localhost:8001/api/v1/voice/query" \
+  -F "audio=@question.webm"
+
+# Upload a document
+curl -X POST "http://localhost:8001/api/v1/documents" \
+  -F "file=@textbook.pdf"
+
+# Health check
 curl "http://localhost:8001/health"
-
-# List all documents
-curl "http://localhost:8001/api/v1/documents"
 ```
 
-## 🎯 Performance Features
-
-Version 2.0.0 includes major performance and usability improvements:
-
-- **⚡ Smart Caching**: Faster repeated queries
-- **🔍 Optimized Search**: Improved vector similarity search  
-- **📊 Admin Dashboard**: Complete system management interface
-- **🗂️ Document Management**: Content analysis and cleanup tools
-- **🔄 Model Switching**: Easy switching between Ollama models
-- **🗃️ Database Options**: SQLite, PostgreSQL, and MySQL support
-
-## Architecture
-
-The system uses a modern, modular architecture:
-
-- **FastAPI Backend**: High-performance API with comprehensive admin interface
-- **Document Processor**: Extracts text and metadata from various file formats
-- **Vector Engine**: Handles embedding generation and similarity search using sentence transformers
-- **Admin Interface**: Complete management dashboard for models, documents, and system configuration
-- **Database Layer**: Flexible storage with SQLite default and PostgreSQL/MySQL support
-- **Web Interface**: Modern, responsive UI for document upload and querying
+Note: state-changing requests (POST/PUT/DELETE) require a CSRF token —
+fetch one from `GET /api/v1/csrf-token` and send it as the `X-CSRF-Token`
+header. The web UI handles this automatically.
 
 ## Project Structure
 
 ```
 open-source-rag-system/
-├── core/                    # Main application code
-│   ├── routers/            # FastAPI route handlers
-│   ├── services/           # Business logic services
-│   ├── repositories/       # Data access layer
-│   └── templates/          # HTML templates for admin interface
-├── static/                 # Web interface assets
-├── config/                 # Configuration files
-├── scripts/                # Organized scripts
-│   ├── setup/             # Setup and installation scripts
-│   ├── maintenance/       # Maintenance and cleanup scripts
-│   ├── debug/             # Debug utilities
-│   ├── deployment/        # Deployment scripts
-│   └── utilities/         # General utilities
-├── tests/                  # Organized test suites
-│   ├── unit/              # Unit tests
-│   ├── integration/       # Integration tests
-│   ├── performance/       # Performance tests
-│   └── fixtures/          # Test data and fixtures
-├── docs/                   # Organized documentation
-│   ├── guides/            # User guides and tutorials
-│   ├── admin/             # Admin interface documentation
-│   ├── architecture/      # System architecture docs
-│   ├── development/       # Development documentation
-│   └── legacy/            # Legacy/historical documentation
-├── tools/                  # Development tools
-│   ├── training/          # Model training tools
-│   ├── utilities/         # General utilities
-│   └── legacy_municipal/  # Legacy municipal-specific tools
-├── deployment/             # Deployment configurations
-│   ├── requirements/      # Environment-specific requirements
-│   └── configs/           # Deployment configurations
-├── examples/               # Example code and demos
-│   ├── demos/             # Demo scripts
-│   └── website/           # Example website integration
-├── data/                   # Application data (gitignored)
-│   ├── storage/           # Document storage
-│   ├── cache/             # Response cache
-│   └── databases/         # SQLite databases
-└── simple_api.py           # Main application entry point
+├── core/
+│   ├── main.py                    # FastAPI app, security headers, router registration
+│   ├── routers/
+│   │   ├── query.py               # POST /api/v1/query (text)
+│   │   ├── voice.py                # POST /api/v1/voice/query (STT -> RAG -> TTS)
+│   │   ├── documents.py           # Upload, list, download, chunk retrieval
+│   │   └── admin.py               # Model/language/database admin endpoints
+│   ├── services/
+│   │   ├── simple_rag_service.py  # Core tutor logic: search, prompt, answer, language
+│   │   ├── voice_service.py       # faster-whisper (STT) + piper (TTS)
+│   │   └── document_service.py    # Upload validation, chunking, embeddings
+│   ├── ollama_client.py           # Ollama integration
+│   └── templates/                 # Admin dashboard, document management HTML
+├── static/
+│   ├── index.html                 # Main UI (Text Chat + Voice Chat tabs)
+│   └── voice_samples/             # Sample TTS clips for voice comparison
+├── config/
+│   ├── llm_config.yaml            # Ollama model catalog + default model
+│   ├── language_config.yaml       # Active response language
+│   ├── languages/                 # Prompt templates + strings, one file per language
+│   └── document_filters.yaml      # Admin document-filter keyword config
+├── data/
+│   ├── storage/                   # Uploaded documents (gitignored)
+│   ├── piper_voices/              # Downloaded TTS voice models (gitignored)
+│   └── rag_database.db            # SQLite database (gitignored)
+├── deployment/requirements/
+│   ├── simple_requirements.txt    # Core dependencies
+│   └── voice_requirements.txt     # Optional: faster-whisper, piper-tts
+├── PROJECT_HANDOFF.md             # Detailed project state / handoff notes
+└── simple_api.py                  # Entry point
 ```
 
-## Contributing
+## What's next
 
-We welcome contributions! Please see our [Contributing Guide](./CONTRIBUTING.md) for details.
+The next phase is the physical device: ESP32 firmware to record microphone
+audio, POST it to `/api/v1/voice/query` over local WiFi, play the returned
+audio through a speaker, and show the answer text on an LCD. Hardware
+specifics (mic, speaker/amp, LCD driver) aren't finalized yet. See
+[PROJECT_HANDOFF.md](PROJECT_HANDOFF.md) for full details on the current
+state, recent fixes, and known rough edges.
 
 ## License
 
 MIT License - see [LICENSE](./LICENSE) for details.
-
-## Support
-
-- 📖 [Documentation](./docs/)
-- 🐛 [Issue Tracker](https://github.com/thenzler/open-source-rag-system/issues)
-- 💬 [Discussions](https://github.com/thenzler/open-source-rag-system/discussions)
