@@ -69,6 +69,11 @@ def load_language_strings() -> Dict[str, str]:
                 strings = yaml.safe_load(f) or {}
             merged = dict(DEFAULT_LANGUAGE_STRINGS)
             merged.update(strings)
+            # Not a real language string - used to keep the response cache key
+            # scoped to the language active when the answer was generated, so
+            # switching languages can never surface a stale answer written in
+            # a different one (see ResponseCache._get_cache_key).
+            merged["_language_code"] = current_language
             return merged
 
         logger.warning(
@@ -77,7 +82,9 @@ def load_language_strings() -> Dict[str, str]:
     except Exception as e:
         logger.warning(f"Failed to load language config, using English defaults: {e}")
 
-    return dict(DEFAULT_LANGUAGE_STRINGS)
+    defaults = dict(DEFAULT_LANGUAGE_STRINGS)
+    defaults["_language_code"] = "en"
+    return defaults
 
 
 _SENTENCE_END_CHARS = ".!?…\"'”)"
@@ -358,10 +365,13 @@ class SimpleRAGService:
                 conversation_history or [], strings
             )
 
-            # Conversation history is part of the cache key (via `extra`) so
-            # a hit can never return an answer generated for a different
-            # conversation state - see ResponseCache._get_cache_key.
-            cached_response = self.cache.get(query, context, extra=history_block)
+            # Conversation history and the active response language are both
+            # part of the cache key (via `extra`) so a hit can never return
+            # an answer generated for a different conversation state, or in
+            # a different language than the one currently configured - see
+            # ResponseCache._get_cache_key.
+            cache_extra = f"{strings['_language_code']}|{history_block}"
+            cached_response = self.cache.get(query, context, extra=cache_extra)
             if cached_response:
                 return cached_response
 
@@ -417,7 +427,7 @@ class SimpleRAGService:
             # future learner who hits the same query/context for up to the
             # cache's TTL, even after the LLM recovers from a transient failure.
             if response:
-                self.cache.set(query, context, result, extra=history_block)
+                self.cache.set(query, context, result, extra=cache_extra)
 
             return result
 
