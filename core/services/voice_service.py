@@ -7,15 +7,36 @@ Models are loaded once per process (lazy singletons) since loading them is slow.
 import io
 import logging
 import os
+import re
 import wave
 from pathlib import Path
+from typing import Iterator, List
 
 import yaml
 
 logger = logging.getLogger(__name__)
 
+# Split on sentence-ending punctuation followed by whitespace. Not perfect
+# (e.g. "Dr." mid-sentence), but good enough for TTS chunking - an
+# occasional over-split just means one shorter audio chunk, not a
+# correctness problem the way it would be for text display.
+_SENTENCE_SPLIT_RE = re.compile(r"(?<=[.!?])\s+")
+
 _whisper_model = None
 _piper_voice = None
+
+
+def split_sentences(text: str) -> List[str]:
+    """Split text into sentence-sized chunks for streaming TTS.
+
+    Exposed as a plain function (not a VoiceService method) so a caller can
+    compute the chunk count - needed for the hardware protocol's
+    frame_count metadata field - before synthesis actually starts.
+    """
+    sentences = [s.strip() for s in _SENTENCE_SPLIT_RE.split(text) if s.strip()]
+    if sentences:
+        return sentences
+    return [text.strip()] if text.strip() else []
 
 
 def _get_active_language() -> str:
@@ -81,3 +102,32 @@ class VoiceService:
         with wave.open(buffer, "wb") as wav_file:
             voice.synthesize_wav(text, wav_file)
         return buffer.getvalue()
+
+    def synthesize_sentences(self, sentences: List[str]) -> Iterator[bytes]:
+        """Synthesize a pre-split list of sentences, yielding one WAV per sentence.
+
+        Lets a caller start sending/playing audio for the first sentence
+        while later sentences are still being synthesized, instead of
+        waiting for the whole answer. Each yielded chunk is a complete,
+        independently-playable WAV file (own header), using Piper's
+        streaming synthesize() API (returns raw PCM AudioChunks) rather
+        than the batch synthesize_wav() helper `synthesize()` above uses.
+
+        Takes a pre-split sentence list (see split_sentences) rather than
+        splitting internally, so a caller can know the chunk count upfront.
+        """
+        voice = _get_piper_voice()
+
+        for sentence in sentences:
+            audio_chunks = list(voice.synthesize(sentence))
+            if not audio_chunks:
+                continue
+
+            buffer = io.BytesIO()
+            with wave.open(buffer, "wb") as wav_file:
+                wav_file.setnchannels(audio_chunks[0].sample_channels)
+                wav_file.setsampwidth(audio_chunks[0].sample_width)
+                wav_file.setframerate(audio_chunks[0].sample_rate)
+                for chunk in audio_chunks:
+                    wav_file.writeframes(chunk.audio_int16_bytes)
+            yield buffer.getvalue()

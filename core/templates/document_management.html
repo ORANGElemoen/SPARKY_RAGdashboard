@@ -3,330 +3,213 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Document Management - RAG System Admin</title>
+    <title>Document Management - STEM Voice Tutor Admin</title>
+    <link rel="stylesheet" href="/static/theme.css">
     <style>
-        * {
-            margin: 0;
-            padding: 0;
-            box-sizing: border-box;
+        body { padding: var(--space-6); }
+
+        .admin-container {
+            max-width: 1200px;
+            margin: 0 auto;
+            background: var(--color-surface);
+            border-radius: var(--radius-xl);
+            box-shadow: var(--shadow-lg);
+            overflow: hidden;
         }
-        
-        body {
-            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
-            background: #f5f5f5;
-            min-height: 100vh;
-        }
-        
-        .header {
-            background: linear-gradient(135deg, #2c3e50 0%, #34495e 100%);
+
+        .admin-header {
+            background: linear-gradient(160deg, var(--color-ink) 0%, var(--color-ink-soft) 100%);
             color: white;
-            padding: 20px;
-            box-shadow: 0 2px 5px rgba(0,0,0,0.1);
+            padding: var(--space-8) var(--space-8) var(--space-6);
+            text-align: center;
+            position: relative;
+            overflow: hidden;
         }
-        
-        .header h1 {
-            font-size: 2rem;
-            margin-bottom: 5px;
+        .admin-header::before {
+            content: "";
+            position: absolute;
+            inset: 0;
+            background: radial-gradient(60% 90% at 50% -10%, rgba(59, 91, 219, 0.35), transparent 70%);
+            pointer-events: none;
         }
-        
-        .header .back-link {
+        .admin-header h1 { display: inline-flex; align-items: center; gap: var(--space-3); font-size: var(--text-2xl); margin-bottom: var(--space-2); position: relative; }
+        .admin-header h1 .icon { color: #8fa4ff; }
+        .admin-header p { opacity: 0.75; font-size: var(--text-sm); position: relative; }
+
+        .nav-links { margin-top: var(--space-5); display: flex; gap: var(--space-2); justify-content: center; flex-wrap: wrap; position: relative; }
+        .nav-links a {
+            display: inline-flex;
+            align-items: center;
+            gap: var(--space-2);
+            background: rgba(255,255,255,0.08);
+            border: 1px solid var(--color-ink-border);
             color: white;
+            padding: 9px 16px;
+            border-radius: var(--radius-full);
             text-decoration: none;
-            opacity: 0.8;
+            font-size: var(--text-sm);
+            font-weight: var(--font-medium);
+            transition: background var(--duration-base) var(--ease-out), transform var(--duration-base) var(--ease-out);
         }
-        
-        .header .back-link:hover {
-            opacity: 1;
-        }
-        
-        .container {
-            max-width: 1400px;
-            margin: 20px auto;
-            padding: 0 20px;
-        }
-        
+        .nav-links a:hover { background: rgba(255,255,255,0.16); transform: translateY(-1px); color: white; }
+
+        .admin-content { padding: var(--space-8); }
+
         .stats-grid {
             display: grid;
             grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
-            gap: 20px;
-            margin-bottom: 30px;
+            gap: var(--space-4);
+            margin-bottom: var(--space-8);
         }
-        
+
         .stat-card {
-            background: white;
-            border-radius: 8px;
-            padding: 20px;
-            box-shadow: 0 2px 5px rgba(0,0,0,0.1);
+            background: var(--color-surface);
+            border: 1px solid var(--color-border);
+            border-radius: var(--radius-lg);
+            padding: var(--space-5);
             text-align: center;
+            transition: transform var(--duration-base) var(--ease-out), box-shadow var(--duration-base) var(--ease-out);
         }
-        
-        .stat-value {
-            font-size: 2.5rem;
-            font-weight: bold;
-            margin-bottom: 5px;
-        }
-        
-        .stat-label {
-            color: #666;
-            font-size: 0.9rem;
-        }
-        
-        .stat-card.good { border-left: 4px solid #28a745; }
-        .stat-card.warning { border-left: 4px solid #ffc107; }
-        .stat-card.danger { border-left: 4px solid #dc3545; }
-        
+        .stat-card:hover { transform: translateY(-2px); box-shadow: var(--shadow-sm); }
+
+        .stat-value { font-size: var(--text-2xl); font-weight: var(--font-bold); margin-bottom: 2px; }
+        .stat-label { color: var(--color-text-secondary); font-size: var(--text-sm); }
+
+        .stat-card.good .stat-value { color: var(--color-success); }
+        .stat-card.warning .stat-value { color: var(--color-warning); }
+        .stat-card.danger .stat-value { color: var(--color-danger); }
+
         .section {
-            background: white;
-            border-radius: 8px;
-            padding: 25px;
-            margin-bottom: 20px;
-            box-shadow: 0 2px 5px rgba(0,0,0,0.1);
+            background: var(--color-surface);
+            border: 1px solid var(--color-border);
+            border-radius: var(--radius-lg);
+            padding: var(--space-6);
+            margin-bottom: var(--space-5);
+            box-shadow: var(--shadow-xs);
         }
-        
+
         .section-title {
-            font-size: 1.5rem;
-            margin-bottom: 20px;
-            color: #2c3e50;
-            border-bottom: 2px solid #3498db;
-            padding-bottom: 10px;
-        }
-        
-        .filter-config {
-            display: grid;
-            gap: 20px;
-        }
-        
-        .filter-group {
-            border: 1px solid #ddd;
-            border-radius: 6px;
-            padding: 15px;
-            background: #f9f9f9;
-        }
-        
-        .filter-group h4 {
-            margin-bottom: 10px;
-            color: #333;
-        }
-        
-        .keyword-list {
             display: flex;
-            flex-wrap: wrap;
-            gap: 8px;
-            margin-bottom: 10px;
+            align-items: center;
+            gap: var(--space-2);
+            font-size: var(--text-lg);
+            margin-bottom: var(--space-5);
+            color: var(--color-text);
+            padding-bottom: var(--space-3);
+            border-bottom: 1px solid var(--color-border);
         }
-        
+        .section-title .icon { color: var(--color-accent); }
+
+        .filter-config { display: grid; gap: var(--space-4); }
+
+        .filter-group {
+            padding-top: var(--space-4);
+            border-top: 1px solid var(--color-border);
+        }
+        .filter-group:first-child { padding-top: 0; border-top: none; }
+        .filter-group h3 { margin-bottom: var(--space-3); color: var(--color-text); font-size: var(--text-sm); font-weight: var(--font-semibold); }
+
+        .keyword-list { display: flex; flex-wrap: wrap; gap: var(--space-2); margin-bottom: var(--space-2); }
+
         .keyword-tag {
-            background: #e9ecef;
-            padding: 5px 10px;
-            border-radius: 20px;
-            font-size: 0.9rem;
+            background: var(--color-surface);
+            border: 1px solid var(--color-border);
+            padding: 4px 10px;
+            border-radius: var(--radius-full);
+            font-size: var(--text-xs);
             display: inline-flex;
             align-items: center;
-            gap: 5px;
+            gap: var(--space-1);
         }
-        
+
         .keyword-tag button {
             background: none;
             border: none;
-            color: #dc3545;
+            color: var(--color-danger);
             cursor: pointer;
             font-size: 1rem;
             padding: 0;
             line-height: 1;
         }
-        
-        .keyword-input {
-            display: flex;
-            gap: 10px;
-            margin-top: 10px;
-        }
-        
-        .keyword-input input {
-            flex: 1;
-            padding: 8px;
-            border: 1px solid #ddd;
-            border-radius: 4px;
-        }
-        
-        .btn {
-            padding: 10px 20px;
-            border: none;
-            border-radius: 4px;
-            cursor: pointer;
-            font-size: 1rem;
-            transition: all 0.3s;
-        }
-        
-        .btn-primary {
-            background: #3498db;
-            color: white;
-        }
-        
-        .btn-primary:hover {
-            background: #2980b9;
-        }
-        
-        .btn-success {
-            background: #28a745;
-            color: white;
-        }
-        
-        .btn-danger {
-            background: #dc3545;
-            color: white;
-        }
-        
-        .btn-warning {
-            background: #ffc107;
-            color: #212529;
-        }
-        
+
+        .keyword-input { display: flex; gap: var(--space-2); margin-top: var(--space-3); }
+        .keyword-input input { flex: 1; }
+
         .document-list {
             max-height: 400px;
             overflow-y: auto;
-            border: 1px solid #ddd;
-            border-radius: 4px;
-            padding: 10px;
+            border-top: 1px solid var(--color-border);
+            border-bottom: 1px solid var(--color-border);
         }
-        
+
         .document-item {
-            padding: 10px;
-            border-bottom: 1px solid #eee;
+            padding: var(--space-3);
+            border-bottom: 1px solid var(--color-border);
             display: flex;
             justify-content: space-between;
             align-items: center;
+            gap: var(--space-3);
+            transition: background var(--duration-fast) var(--ease-out);
         }
-        
-        .document-actions {
-            display: flex;
-            gap: 5px;
-        }
-        
-        .btn-sm {
-            padding: 5px 10px;
-            font-size: 0.85rem;
-        }
-        
-        .form-input {
-            width: 100%;
-            padding: 8px;
-            border: 1px solid #ddd;
-            border-radius: 4px;
-            font-size: 1rem;
-        }
-        
-        .form-input:focus {
-            outline: none;
-            border-color: #3498db;
-        }
-        
-        select.form-input {
-            cursor: pointer;
-        }
-        
-        .document-item:last-child {
-            border-bottom: none;
-        }
-        
-        .document-info {
-            flex: 1;
-        }
-        
-        .document-title {
-            font-weight: 500;
-            margin-bottom: 5px;
-        }
-        
-        .document-meta {
-            font-size: 0.85rem;
-            color: #666;
-        }
-        
+        .document-item:hover { background: var(--color-surface-alt); }
+        .document-item:last-child { border-bottom: none; }
+
+        .document-actions { display: flex; gap: var(--space-2); }
+
+        .document-info { flex: 1; min-width: 0; }
+        .document-title { font-weight: var(--font-medium); margin-bottom: 2px; }
+        .document-meta { font-size: var(--text-xs); color: var(--color-text-tertiary); }
+
+        select.form-input { cursor: pointer; }
+
         .cleanup-controls {
             display: flex;
-            gap: 20px;
+            gap: var(--space-5);
             align-items: center;
-            padding: 20px;
-            background: #f9f9f9;
-            border-radius: 6px;
-            margin-top: 20px;
+            flex-wrap: wrap;
+            padding-top: var(--space-5);
+            margin-top: var(--space-5);
+            border-top: 1px solid var(--color-border);
         }
-        
-        .checkbox-group {
-            display: flex;
-            gap: 15px;
-        }
-        
-        .checkbox-group label {
-            display: flex;
-            align-items: center;
-            gap: 5px;
-        }
-        
-        .action-buttons {
-            margin-left: auto;
-            display: flex;
-            gap: 10px;
-        }
-        
-        .loading {
-            display: none;
-            text-align: center;
-            padding: 20px;
-        }
-        
-        .loading.active {
-            display: block;
-        }
-        
-        .spinner {
-            border: 3px solid #f3f3f3;
-            border-top: 3px solid #3498db;
-            border-radius: 50%;
-            width: 40px;
-            height: 40px;
-            animation: spin 1s linear infinite;
-            margin: 0 auto 10px;
-        }
-        
-        @keyframes spin {
-            0% { transform: rotate(0deg); }
-            100% { transform: rotate(360deg); }
-        }
-        
-        .alert {
-            padding: 15px;
-            border-radius: 4px;
-            margin-bottom: 20px;
-        }
-        
-        .alert-success {
-            background: #d4edda;
-            color: #155724;
-            border: 1px solid #c3e6cb;
-        }
-        
-        .alert-danger {
-            background: #f8d7da;
-            color: #721c24;
-            border: 1px solid #f5c6cb;
-        }
-        
-        .alert-info {
-            background: #d1ecf1;
-            color: #0c5460;
-            border: 1px solid #bee5eb;
-        }
+
+        .checkbox-group { display: flex; gap: var(--space-4); flex-wrap: wrap; }
+        .checkbox-group label { display: flex; align-items: center; gap: var(--space-2); font-size: var(--text-sm); }
+
+        .action-buttons { margin-left: auto; display: flex; gap: var(--space-2); flex-wrap: wrap; }
+
+        .loading { display: none; text-align: center; padding: var(--space-5); }
+        .loading.active { display: block; animation: fadeIn var(--duration-base) var(--ease-out) both; }
+        .spinner .icon { width: 2rem; height: 2rem; color: var(--color-accent); margin: 0 auto var(--space-2); display: block; }
+
+        #alerts { display: flex; flex-direction: column; gap: var(--space-2); }
+        .alert { display: flex; align-items: center; gap: var(--space-2); margin-bottom: var(--space-2); }
     </style>
 </head>
 <body>
-    <div class="header">
-        <a href="/admin" class="back-link">← Back to Admin Dashboard</a>
-        <h1>Document Management</h1>
-        <p>Analyze, filter, and clean your document collection</p>
-    </div>
+    <svg style="display:none" aria-hidden="true">
+      <symbol id="icon-folder" viewBox="0 0 24 24"><path d="M3.5 6.5A1.5 1.5 0 0 1 5 5h4.5l2 2.5H19a1.5 1.5 0 0 1 1.5 1.5v8a1.5 1.5 0 0 1-1.5 1.5H5A1.5 1.5 0 0 1 3.5 17v-10.5z"/></symbol>
+      <symbol id="icon-filter" viewBox="0 0 24 24"><path d="M4 5h16l-6 8v6l-4-2v-4L4 5z"/></symbol>
+      <symbol id="icon-activity" viewBox="0 0 24 24"><polyline points="3 12 8 12 10 6 14 18 16 12 21 12"/></symbol>
+      <symbol id="icon-database" viewBox="0 0 24 24"><ellipse cx="12" cy="5.5" rx="7.5" ry="2.5"/><path d="M4.5 5.5v13c0 1.4 3.4 2.5 7.5 2.5s7.5-1.1 7.5-2.5v-13"/><path d="M4.5 12c0 1.4 3.4 2.5 7.5 2.5s7.5-1.1 7.5-2.5"/></symbol>
+      <symbol id="icon-loader" viewBox="0 0 24 24"><line x1="12" y1="2" x2="12" y2="6"/><line x1="12" y1="18" x2="12" y2="22" opacity="0.25"/><line x1="4.9" y1="4.9" x2="7.8" y2="7.8" opacity="0.9"/><line x1="16.2" y1="16.2" x2="19.1" y2="19.1" opacity="0.35"/><line x1="2" y1="12" x2="6" y2="12" opacity="0.8"/><line x1="18" y1="12" x2="22" y2="12" opacity="0.45"/><line x1="4.9" y1="19.1" x2="7.8" y2="16.2" opacity="0.6"/><line x1="16.2" y1="7.8" x2="19.1" y2="4.9" opacity="0.55"/></symbol>
+      <symbol id="icon-check-circle" viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><polyline points="8 12.5 11 15.5 16 9"/></symbol>
+      <symbol id="icon-x-circle" viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><line x1="9" y1="9" x2="15" y2="15"/><line x1="15" y1="9" x2="9" y2="15"/></symbol>
+      <symbol id="icon-info" viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><line x1="12" y1="11" x2="12" y2="16"/><circle cx="12" cy="7.5" r="0.9" fill="currentColor" stroke="none"/></symbol>
+      <symbol id="icon-settings" viewBox="0 0 24 24"><circle cx="12" cy="12" r="3"/><path d="M12 2v3M12 19v3M4.2 4.2l2.1 2.1M17.7 17.7l2.1 2.1M2 12h3M19 12h3M4.2 19.8l2.1-2.1M17.7 6.3l2.1-2.1"/></symbol>
+      <symbol id="icon-home" viewBox="0 0 24 24"><path d="M4 11.5 12 4l8 7.5"/><path d="M6 10v9a1 1 0 0 0 1 1h4v-6h2v6h4a1 1 0 0 0 1-1v-9"/></symbol>
+    </svg>
 
-    <div class="container">
+    <div class="admin-container">
+        <div class="admin-header">
+            <h1><svg class="icon"><use href="#icon-folder"/></svg> Document Management</h1>
+            <p>Analyze, filter, and clean your document collection</p>
+            <div class="nav-links">
+                <a href="/admin/"><svg class="icon"><use href="#icon-settings"/></svg> Admin Home</a>
+                <a href="/"><svg class="icon"><use href="#icon-home"/></svg> Main UI</a>
+            </div>
+        </div>
+
+    <div class="admin-content">
         <div id="alerts"></div>
         
         <!-- Statistics -->
@@ -336,8 +219,8 @@
                 <div class="stat-label">Total Documents</div>
             </div>
             <div class="stat-card good">
-                <div class="stat-value">{{ analyses.bio_waste_documents }}</div>
-                <div class="stat-label">Clean Documents</div>
+                <div class="stat-value">{{ analyses.stem_documents }}</div>
+                <div class="stat-label">On-Topic STEM Documents</div>
             </div>
             <div class="stat-card danger">
                 <div class="stat-value">{{ analyses.problematic_documents }}</div>
@@ -351,12 +234,12 @@
 
         <!-- Filter Configuration -->
         <div class="section">
-            <h2 class="section-title">Filter Configuration</h2>
+            <h2 class="section-title"><svg class="icon"><use href="#icon-filter"/></svg> Filter Configuration</h2>
             <div class="filter-config">
                 <div class="filter-group">
-                    <h4>Target Keywords (Documents to Keep)</h4>
+                    <h3>STEM Keywords (Documents to Keep)</h3>
                     <div class="keyword-list" id="targetKeywords">
-                        {% for keyword in filter_config.bio_waste_keywords %}
+                        {% for keyword in filter_config.stem_keywords %}
                         <span class="keyword-tag">
                             {{ keyword }}
                             <button onclick="removeKeyword('target', '{{ keyword }}')">&times;</button>
@@ -370,7 +253,7 @@
                 </div>
 
                 <div class="filter-group">
-                    <h4>Problematic Keywords (Training Instructions)</h4>
+                    <h3>Problematic Keywords (Training Instructions)</h3>
                     <div class="keyword-list" id="problematicKeywords">
                         {% for keyword in filter_config.problematic_keywords %}
                         <span class="keyword-tag">
@@ -386,7 +269,7 @@
                 </div>
 
                 <div class="filter-group">
-                    <h4>Exclude Keywords (Off-topic Content)</h4>
+                    <h3>Exclude Keywords (Off-topic Content)</h3>
                     <div class="keyword-list" id="excludeKeywords">
                         {% for keyword in filter_config.exclude_keywords %}
                         <span class="keyword-tag">
@@ -409,7 +292,7 @@
 
         <!-- Document Analysis -->
         <div class="section">
-            <h2 class="section-title">Document Analysis</h2>
+            <h2 class="section-title"><svg class="icon"><use href="#icon-activity"/></svg> Document Analysis</h2>
             
             <h3 style="margin-top: 20px; margin-bottom: 10px;">All Documents</h3>
             <div class="document-list" id="allDocumentsList">
@@ -465,10 +348,10 @@
 
         <!-- Database Configuration -->
         <div class="section">
-            <h2 class="section-title">Database Configuration</h2>
+            <h2 class="section-title"><svg class="icon"><use href="#icon-database"/></svg> Database Configuration</h2>
             <div class="filter-config">
                 <div class="filter-group">
-                    <h4>Database Settings</h4>
+                    <h3>Database Settings</h3>
                     <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 15px;">
                         <div>
                             <label>Database Type:</label>
@@ -512,30 +395,35 @@
         </div>
 
         <div class="loading" id="loading">
-            <div class="spinner"></div>
+            <div class="spinner"><svg class="icon icon-spin"><use href="#icon-loader"/></svg></div>
             <p>Processing...</p>
         </div>
+    </div>
     </div>
 
     <!-- Document Detail Modal -->
     <div id="documentModal" style="display: none; position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.5); z-index: 1000;">
-        <div style="background: white; margin: 50px auto; max-width: 800px; max-height: 80vh; overflow-y: auto; border-radius: 8px; padding: 20px;">
-            <h2>Document Details</h2>
-            <div id="documentDetails"></div>
-            <div style="text-align: right; margin-top: 20px;">
-                <button class="btn btn-primary" onclick="closeDocumentModal()">Close</button>
+        <div style="background: white; margin: 50px auto; max-width: 800px; max-height: 80vh; overflow-y: auto; border-radius: 8px;">
+            <div style="display: flex; align-items: center; justify-content: space-between; padding: 20px 20px 0; position: sticky; top: 0; background: white;">
+                <h2 style="margin: 0;">Document Details</h2>
+                <button class="btn btn-sm" onclick="closeDocumentModal()" aria-label="Close">Close</button>
             </div>
+            <div id="documentDetails" style="padding: 20px;"></div>
         </div>
     </div>
 
     <script>
         let currentConfig = {{ filter_config|tojson }};
 
+        const ALERT_ICONS = { success: 'icon-check-circle', danger: 'icon-x-circle', info: 'icon-info' };
+
         function showAlert(message, type = 'info') {
             const alertDiv = document.getElementById('alerts');
             const alert = document.createElement('div');
             alert.className = `alert alert-${type}`;
-            alert.textContent = message;
+            const iconId = ALERT_ICONS[type] || ALERT_ICONS.info;
+            alert.innerHTML = `<svg class="icon"><use href="#${iconId}"/></svg><span></span>`;
+            alert.querySelector('span').textContent = message;
             alertDiv.appendChild(alert);
             setTimeout(() => alert.remove(), 5000);
         }
@@ -553,7 +441,7 @@
             
             if (!keyword) return;
             
-            const configKey = type === 'target' ? 'bio_waste_keywords' : 
+            const configKey = type === 'target' ? 'stem_keywords' : 
                             type === 'problematic' ? 'problematic_keywords' : 
                             'exclude_keywords';
             
@@ -565,7 +453,7 @@
         }
 
         function removeKeyword(type, keyword) {
-            const configKey = type === 'target' ? 'bio_waste_keywords' : 
+            const configKey = type === 'target' ? 'stem_keywords' : 
                             type === 'problematic' ? 'problematic_keywords' : 
                             'exclude_keywords';
             
@@ -647,26 +535,50 @@
         }
 
         // Single document management
+        function fieldRow(label, value) {
+            const p = document.createElement('p');
+            const strong = document.createElement('strong');
+            strong.textContent = label + ': ';
+            p.appendChild(strong);
+            p.appendChild(document.createTextNode(value == null || value === '' ? 'Unknown' : String(value)));
+            return p;
+        }
+
         async function viewDocument(docId) {
+            const modal = document.getElementById('documentModal');
+            const details = document.getElementById('documentDetails');
             try {
                 const response = await fetch(`/admin/documents/${docId}`);
                 const doc = await response.json();
-                
-                const modal = document.getElementById('documentModal');
-                const details = document.getElementById('documentDetails');
-                
-                details.innerHTML = `
-                    <p><strong>ID:</strong> ${doc.id}</p>
-                    <p><strong>Filename:</strong> ${doc.filename}</p>
-                    <p><strong>Size:</strong> ${(doc.size / 1024).toFixed(2)} KB</p>
-                    <p><strong>Type:</strong> ${doc.content_type}</p>
-                    <p><strong>Upload Date:</strong> ${doc.upload_date || 'Unknown'}</p>
-                    <p><strong>Status:</strong> ${doc.status}</p>
-                    <p><strong>File Path:</strong> ${doc.file_path || 'N/A'}</p>
-                    <h4>Content Preview:</h4>
-                    <pre style="background: #f5f5f5; padding: 10px; border-radius: 4px; max-height: 300px; overflow-y: auto;">${doc.content_preview}</pre>
-                `;
-                
+                if (!response.ok) {
+                    throw new Error(doc.detail || `HTTP ${response.status}`);
+                }
+
+                details.textContent = '';
+                details.appendChild(fieldRow('ID', doc.id));
+                details.appendChild(fieldRow('Filename', doc.filename));
+                details.appendChild(fieldRow('Size', doc.size != null ? (doc.size / 1024).toFixed(2) + ' KB' : null));
+                details.appendChild(fieldRow('Type', doc.content_type));
+                details.appendChild(fieldRow('Upload Date', doc.upload_date));
+                details.appendChild(fieldRow('Status', doc.status));
+                details.appendChild(fieldRow('File Path', doc.file_path || 'N/A'));
+
+                if (doc.can_preview_inline) {
+                    const iframe = document.createElement('iframe');
+                    iframe.src = `/api/v1/documents/${doc.id}/download`;
+                    iframe.style.cssText = 'width: 100%; height: 500px; border: 1px solid #ddd; border-radius: 4px;';
+                    details.appendChild(iframe);
+                }
+
+                const heading = document.createElement('h3');
+                heading.textContent = 'Content Preview:';
+                details.appendChild(heading);
+
+                const pre = document.createElement('pre');
+                pre.style.cssText = 'background: #f5f5f5; padding: 10px; border-radius: 4px; max-height: 300px; overflow-y: auto; white-space: pre-wrap;';
+                pre.textContent = doc.content_preview || '(no extracted text stored for this document)';
+                details.appendChild(pre);
+
                 modal.style.display = 'block';
             } catch (error) {
                 showAlert('Error loading document details: ' + error.message, 'danger');
@@ -798,7 +710,7 @@
                             <div class="document-info">
                                 <div class="document-title">${doc.filename}</div>
                                 <div class="document-meta">
-                                    ID: ${doc.id} | Size: ${(doc.size / 1024).toFixed(2)} KB | 
+                                    ID: ${doc.id} | Size: ${doc.file_size != null ? (doc.file_size / 1024).toFixed(2) + ' KB' : 'Unknown'} |
                                     Status: ${doc.status}
                                 </div>
                             </div>

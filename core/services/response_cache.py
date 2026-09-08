@@ -21,20 +21,28 @@ class ResponseCache:
         self.cache_dir.mkdir(parents=True, exist_ok=True)
         self.ttl = timedelta(hours=ttl_hours)
 
-    def _get_cache_key(self, query: str, context: str) -> str:
-        """Generate cache key from query and context"""
-        # Create a deterministic hash from query + context
-        combined = f"{query}|{context[:1000]}"  # Limit context for performance
+    def _get_cache_key(self, query: str, context: str, extra: str = "") -> str:
+        """Generate cache key from query, context, and any extra state.
+
+        `extra` exists for anything else that changes what answer should be
+        generated for the same query+context - currently the conversation-
+        history block (see SimpleRAGService._build_conversation_history_block).
+        Without it, a cache hit could return an answer generated for a
+        different conversation history, silently ignoring the current
+        conversation's context.
+        """
+        # Create a deterministic hash from query + context + extra
+        combined = f"{query}|{context[:1000]}|{extra[:1000]}"
         return hashlib.md5(combined.encode(), usedforsecurity=False).hexdigest()
 
     def _get_cache_file(self, cache_key: str) -> Path:
         """Get cache file path"""
         return self.cache_dir / f"{cache_key}.json"
 
-    def get(self, query: str, context: str) -> Optional[Dict[str, Any]]:
+    def get(self, query: str, context: str, extra: str = "") -> Optional[Dict[str, Any]]:
         """Get cached response if available and not expired"""
         try:
-            cache_key = self._get_cache_key(query, context)
+            cache_key = self._get_cache_key(query, context, extra)
             cache_file = self._get_cache_file(cache_key)
 
             if not cache_file.exists():
@@ -49,17 +57,17 @@ class ResponseCache:
                 cache_file.unlink()  # Remove expired cache
                 return None
 
-            logger.info(f"✅ Cache hit for query: {query[:50]}...")
+            logger.info(f"Cache hit for query: {query[:50]}...")
             return cached_data["response"]
 
         except Exception as e:
             logger.warning(f"Cache read error: {e}")
             return None
 
-    def set(self, query: str, context: str, response: Dict[str, Any]):
+    def set(self, query: str, context: str, response: Dict[str, Any], extra: str = ""):
         """Cache a response"""
         try:
-            cache_key = self._get_cache_key(query, context)
+            cache_key = self._get_cache_key(query, context, extra)
             cache_file = self._get_cache_file(cache_key)
 
             cached_data = {
@@ -74,7 +82,7 @@ class ResponseCache:
             with open(cache_file, "w", encoding="utf-8") as f:
                 json.dump(cached_data, f, ensure_ascii=False, indent=2)
 
-            logger.info(f"💾 Cached response for query: {query[:50]}...")
+            logger.info(f"Cached response for query: {query[:50]}...")
 
         except Exception as e:
             logger.warning(f"Cache write error: {e}")
@@ -99,7 +107,7 @@ class ResponseCache:
                     removed += 1
 
             if removed > 0:
-                logger.info(f"🧹 Removed {removed} expired cache entries")
+                logger.info(f"Removed {removed} expired cache entries")
 
         except Exception as e:
             logger.warning(f"Cache cleanup error: {e}")
@@ -127,7 +135,7 @@ class ResponseCache:
                 cache_file.unlink()
                 removed += 1
 
-            logger.info(f"🗑️ Cleared {removed} cache entries")
+            logger.info(f"Cleared {removed} cache entries")
 
         except Exception as e:
             logger.warning(f"Cache clear error: {e}")

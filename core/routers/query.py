@@ -4,10 +4,13 @@ Single AI-only endpoint for RAG queries
 """
 
 import logging
-from typing import Any, Dict
+from typing import Any, Dict, Optional
 
 from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel, Field
+
+from ..repositories.device_repository import Device
+from .device_auth import get_device_from_key
 
 logger = logging.getLogger(__name__)
 
@@ -15,14 +18,24 @@ logger = logging.getLogger(__name__)
 # Simple request/response models for single endpoint
 class QueryRequest(BaseModel):
     query: str = Field(..., min_length=3, max_length=500, description="User question")
+    session_id: Optional[str] = Field(
+        default=None,
+        description="Identifies one learner's conversation (e.g. one browser tab), "
+        "so follow-up questions can pull in that session's own recent turns. "
+        "Omit for a one-off query with no conversation memory.",
+    )
 
 
 class QueryResponse(BaseModel):
     answer: str = Field(..., description="AI-generated answer")
-    sources: list = Field(default=[], description="Source documents")
+    sources: list = Field(default=[], description="Retrieved chunks used to ground the answer (document name, chunk text, similarity)")
     confidence: float = Field(..., description="Confidence score")
     timestamp: str = Field(..., description="Response timestamp")
     query: str = Field(..., description="Original query")
+    used_general_knowledge: bool = Field(
+        default=False,
+        description="True if no relevant document chunk was found and the tutor fell back to general knowledge",
+    )
 
 
 class StatusResponse(BaseModel):
@@ -46,13 +59,13 @@ def get_rag_service():
         # Get repositories
         rag_repo = RepositoryFactory.create_production_repository()
         vector_repo = rag_repo.vector_search
-        audit_repo = rag_repo.audit
+        interaction_log_repo = rag_repo.interaction_log
 
         # Get LLM client with faster timeout for better user experience
         llm_client = OllamaClient(timeout=60)  # 1 minute instead of 3 minutes
 
         # Create simple RAG service
-        return SimpleRAGService(vector_repo, llm_client, audit_repo)
+        return SimpleRAGService(vector_repo, llm_client, interaction_log_repo)
 
     except Exception as e:
         logger.error(f"Failed to create RAG service: {e}")
@@ -60,7 +73,11 @@ def get_rag_service():
 
 
 @router.post("/query", response_model=QueryResponse)
-async def query_documents(request: QueryRequest, rag_service=Depends(get_rag_service)):
+async def query_documents(
+    request: QueryRequest,
+    rag_service=Depends(get_rag_service),
+    device: Optional[Device] = Depends(get_device_from_key),
+):
     """
     Ask a question and get an AI answer with sources
 
@@ -72,7 +89,12 @@ async def query_documents(request: QueryRequest, rag_service=Depends(get_rag_ser
         logger.info(f"Processing query: {request.query[:50]}...")
 
         # Process query using SimpleRAGService
-        response = await rag_service.answer_query(request.query)
+        response = await rag_service.answer_query(
+            request.query,
+            query_type="text",
+            session_id=request.session_id,
+            device_id=device.id if device else None,
+        )
 
         # Check for errors
         if "error" in response:

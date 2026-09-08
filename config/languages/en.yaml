@@ -14,7 +14,7 @@ prompt_template: |
   DOCUMENTS:
   {context}
 
-  QUESTION: {query}
+  {conversation_history}QUESTION: {query}
 
   ANSWER (simple, fun, and encouraging, for a child):
 
@@ -28,7 +28,7 @@ general_prompt_template: |
   electricity concepts with simple language and relatable, everyday
   examples. Encourage curiosity and make learning exciting.
 
-  QUESTION: {query}
+  {conversation_history}QUESTION: {query}
 
   ANSWER (simple, fun, and encouraging, for a child):
 
@@ -39,3 +39,10 @@ voice_error_prompt: "Sorry, something went wrong while I was thinking. Can you t
 sources_label: "Sources"
 source_line: "[Source {id}] Document {document_id} - {url}"
 truncated_notice: "[...truncated for performance...]"
+
+# Used to give the tutor short-term memory of earlier turns in the same
+# session, so follow-up questions like "how does that work?" resolve
+# correctly. Left out of the prompt entirely when there's no prior turn.
+conversation_history_label: "CONVERSATION SO FAR"
+conversation_learner_label: "Learner"
+conversation_tutor_label: "Tutor"

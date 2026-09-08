@@ -53,35 +53,38 @@ class SystemStats(BaseModel):
 class DocumentFilterConfig(BaseModel):
     """Configuration for document filtering"""
 
-    bio_waste_keywords: List[str] = [
-        "bioabfall",
-        "bio waste",
-        "organic waste",
-        "kompost",
-        "grünabfall",
-        "küchenabfälle",
-        "obst",
-        "gemüse",
-        "fruit",
-        "vegetable",
-        "food waste",
+    stem_keywords: List[str] = [
+        "physics",
+        "chemistry",
+        "biology",
+        "mathematics",
+        "algebra",
+        "geometry",
+        "science",
+        "experiment",
+        "engineering",
+        "technology",
+        "programming",
+        "algorithm",
+        "energy",
+        "electricity",
+        "circuit",
+        "force",
+        "gravity",
+        "molecule",
+        "cell",
+        "ecosystem",
     ]
     problematic_keywords: List[str] = [
         "zero-hallucination",
-        "guidelines for following",
-        "only use information",
-        "training instructions",
-        "quelels",
+        "ignore previous instructions",
+        "ignore all previous instructions",
+        "you are an ai language model",
+        "system prompt:",
     ]
-    exclude_keywords: List[str] = [
-        "javascript",
-        "console.log",
-        "function",
-        "cloud computing",
-        "programming",
-        "software",
-        "algorithm",
-    ]
+    # Deliberately empty - no genuinely off-topic content identified for
+    # this tutor yet; fill in if/when it comes up.
+    exclude_keywords: List[str] = []
     min_content_length: int = 100
     max_corruption_chars: int = 10
 
@@ -359,6 +362,291 @@ async def download_config():
         raise HTTPException(status_code=500, detail=str(e))
 
 
+@router.get("/interaction-log")
+async def get_interaction_log(
+    limit: int = 100,
+    offset: int = 0,
+    session_id: Optional[str] = None,
+    sort_by: str = "timestamp",
+):
+    """List logged tutor question/answer exchanges, most recent first.
+
+    Every /api/v1/query and /api/v1/voice/query exchange is logged here
+    (see InteractionLogRepository) for manual review - this is the export
+    point for that data, and what powers the /admin/interaction-log/view
+    page. chunk_ids/document_ids are resolved here against the live
+    chunks/documents tables to attach the actual source snippet and
+    document name each answer was grounded in, since the log itself only
+    stores the IDs rather than duplicating that text.
+    """
+    try:
+        from ..repositories.factory import (
+            RepositoryFactory,
+            get_document_repository,
+        )
+
+        rag_repo = RepositoryFactory.create_production_repository()
+        interaction_log_repo = rag_repo.interaction_log
+        doc_repo = get_document_repository()
+
+        limit = max(1, min(limit, 1000))
+        offset = max(0, offset)
+        sort_by = sort_by if sort_by in ("timestamp", "session") else "timestamp"
+
+        interactions = await interaction_log_repo.get_interactions(
+            limit=limit, offset=offset, session_id=session_id, sort_by=sort_by
+        )
+        total_count = await interaction_log_repo.count_interactions(
+            session_id=session_id
+        )
+
+        # Resolve every chunk_id referenced on this page in one query, then
+        # attach each interaction's own sources (with text + document name)
+        all_chunk_ids = sorted(
+            {cid for entry in interactions for cid in entry["chunk_ids"]}
+        )
+        chunk_details = await doc_repo.get_chunk_details(all_chunk_ids)
+
+        for entry in interactions:
+            sources = []
+            for chunk_id in entry["chunk_ids"]:
+                detail = chunk_details.get(chunk_id)
+                sources.append(
+                    {
+                        "chunk_id": chunk_id,
+                        "document_id": detail["document_id"] if detail else None,
+                        "document_name": (
+                            detail["document_name"]
+                            if detail
+                            else "(chunk no longer available)"
+                        ),
+                        "text": detail["text"] if detail else None,
+                    }
+                )
+            entry["sources"] = sources
+
+        return {
+            "interactions": interactions,
+            "returned_count": len(interactions),
+            "total_count": total_count,
+            "limit": limit,
+            "offset": offset,
+            "sort_by": sort_by,
+        }
+    except Exception as e:
+        logger.error(f"Error getting interaction log: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.get("/interaction-log/view", response_class=HTMLResponse)
+async def interaction_log_page(request: Request):
+    """Admin page for browsing the question/answer interaction log."""
+    return templates.TemplateResponse("interaction_log.html", {"request": request})
+
+
+class RatingUpdate(BaseModel):
+    rating: Optional[str] = None  # "good", "bad", or None to clear
+
+
+@router.post("/interaction-log/{interaction_id}/rating")
+async def set_interaction_rating(interaction_id: int, body: RatingUpdate):
+    """Mark a logged answer good/bad, or clear its rating.
+
+    A "good" rating promotes the question+answer into the global answer
+    memory pool (see AnswerMemoryService) - embedded and added to the same
+    vector index document chunks live in, so it becomes retrievable for
+    any future question, from any learner. Changing away from "good"
+    (to "bad" or back to unrated) demotes it again, removing it from that
+    index so a later-reconsidered answer can't keep influencing responses.
+    """
+    if body.rating not in ("good", "bad", None):
+        raise HTTPException(
+            status_code=400, detail="rating must be 'good', 'bad', or null"
+        )
+
+    try:
+        from ..repositories.factory import RepositoryFactory
+        from ..services.answer_memory_service import AnswerMemoryService
+
+        rag_repo = RepositoryFactory.create_production_repository()
+        interaction_log_repo = rag_repo.interaction_log
+        doc_repo = rag_repo.documents
+        vector_repo = rag_repo.vector_search
+
+        entry = await interaction_log_repo.get_interaction(interaction_id)
+        if not entry:
+            raise HTTPException(status_code=404, detail="Interaction not found")
+
+        memory_service = AnswerMemoryService(doc_repo, vector_repo)
+
+        # Demote any previous promotion first, so re-rating never leaves a
+        # stale/duplicate entry sitting in the searchable index
+        if entry.get("promoted_document_id"):
+            await memory_service.demote(entry["promoted_document_id"])
+
+        promoted_document_id = None
+        if body.rating == "good":
+            promoted_document_id = await memory_service.promote(
+                interaction_id, entry["question_text"], entry["answer_text"]
+            )
+
+        await interaction_log_repo.set_rating(
+            interaction_id, body.rating, promoted_document_id
+        )
+
+        return {
+            "success": True,
+            "rating": body.rating,
+            "promoted_document_id": promoted_document_id,
+        }
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Error setting rating for interaction {interaction_id}: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+class DeviceCreate(BaseModel):
+    name: str
+
+
+@router.get("/devices")
+async def list_devices():
+    """List registered hardware devices (ESP32 tutor units)."""
+    try:
+        from ..repositories.factory import RepositoryFactory
+
+        device_repo = RepositoryFactory.create_production_repository().devices
+        devices = await device_repo.list_devices()
+        return {
+            "devices": [
+                {
+                    "id": d.id,
+                    "name": d.name,
+                    "created_at": d.created_at,
+                    "last_seen_at": d.last_seen_at,
+                    "revoked_at": d.revoked_at,
+                }
+                for d in devices
+            ]
+        }
+    except Exception as e:
+        logger.error(f"Error listing devices: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.post("/devices")
+async def create_device(body: DeviceCreate):
+    """Register a new hardware device and issue its API key.
+
+    The plaintext key is only ever returned here, at creation time - only
+    its hash is stored (see DeviceRepository). Copy it into the device's
+    firmware config immediately; it can't be recovered later.
+    """
+    if not body.name or not body.name.strip():
+        raise HTTPException(status_code=400, detail="Device name is required")
+
+    try:
+        from ..repositories.factory import RepositoryFactory
+
+        device_repo = RepositoryFactory.create_production_repository().devices
+        device, api_key = await device_repo.create_device(body.name.strip())
+        return {
+            "id": device.id,
+            "name": device.name,
+            "api_key": api_key,
+            "created_at": device.created_at,
+        }
+    except Exception as e:
+        logger.error(f"Error creating device: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.delete("/devices/{device_id}")
+async def revoke_device(device_id: int):
+    """Revoke a device's API key. It can no longer authenticate afterward."""
+    try:
+        from ..repositories.factory import RepositoryFactory
+
+        device_repo = RepositoryFactory.create_production_repository().devices
+        revoked = await device_repo.revoke_device(device_id)
+        if not revoked:
+            raise HTTPException(
+                status_code=404, detail="Device not found or already revoked"
+            )
+        return {"success": True}
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Error revoking device {device_id}: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.get("/devices/view", response_class=HTMLResponse)
+async def devices_page(request: Request):
+    """Admin page for registering and revoking hardware devices."""
+    return templates.TemplateResponse("devices.html", {"request": request})
+
+
+@router.get("/diagnostics")
+async def get_diagnostics():
+    """System health snapshot for the diagnostics admin page.
+
+    Deliberately surfaces only things that already exist elsewhere in the
+    codebase (Ollama health check, response cache stats, device registry,
+    Prometheus system stats) rather than tracking anything new.
+    """
+    try:
+        from ..repositories.factory import RepositoryFactory
+        from ..services.metrics_service import get_metrics_service
+        from ..services.response_cache import ResponseCache
+
+        ollama_health = OllamaClient().health_check()
+
+        cache_stats = ResponseCache().stats()
+
+        rag_repo = RepositoryFactory.create_production_repository()
+        device_counts = await rag_repo.devices.count_devices()
+        devices = await rag_repo.devices.list_devices()
+        most_recent_device = None
+        seen_devices = [d for d in devices if d.last_seen_at]
+        if seen_devices:
+            most_recent = max(seen_devices, key=lambda d: d.last_seen_at)
+            most_recent_device = {
+                "name": most_recent.name,
+                "last_seen_at": most_recent.last_seen_at,
+            }
+
+        metrics_summary = get_metrics_service().get_stats_summary()
+
+        return {
+            "ollama": {
+                "available": ollama_health.get("available", False),
+                "model": ollama_health.get("model"),
+                "error": ollama_health.get("error"),
+            },
+            "cache": cache_stats,
+            "devices": {**device_counts, "most_recently_seen": most_recent_device},
+            "system": metrics_summary,
+        }
+    except Exception as e:
+        logger.error(f"Error getting diagnostics: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.get("/diagnostics/view", response_class=HTMLResponse)
+async def diagnostics_page(request: Request):
+    """Admin page showing a live system health snapshot."""
+    return templates.TemplateResponse("diagnostics.html", {"request": request})
+
+
+@router.get("/protocol-test/view", response_class=HTMLResponse)
+async def protocol_test_page(request: Request):
+    """Admin page for exercising device auth, the binary hardware voice
+    protocol, and the concurrency fix from the browser - no curl needed."""
+    return templates.TemplateResponse("protocol_test.html", {"request": request})
+
+
 @router.get("/logs")
 async def get_recent_logs():
     """Get recent system logs"""
@@ -401,13 +689,13 @@ async def get_document_analysis():
         analyses = await analyze_all_documents()
 
         # Categorize documents
-        bio_waste_docs = []
+        stem_docs = []
         problematic_docs = []
         unknown_docs = []
 
         for doc in analyses:
-            if doc.content_type == "bio_waste" and not doc.is_problematic:
-                bio_waste_docs.append(doc)
+            if doc.content_type == "stem_content" and not doc.is_problematic:
+                stem_docs.append(doc)
             elif doc.is_problematic:
                 problematic_docs.append(doc)
             else:
@@ -415,11 +703,11 @@ async def get_document_analysis():
 
         return {
             "total_documents": len(analyses),
-            "bio_waste_documents": len(bio_waste_docs),
+            "stem_documents": len(stem_docs),
             "problematic_documents": len(problematic_docs),
             "unknown_documents": len(unknown_docs),
             "documents": {
-                "bio_waste": bio_waste_docs,
+                "stem": stem_docs,
                 "problematic": problematic_docs,
                 "unknown": unknown_docs,
             },
@@ -547,7 +835,7 @@ async def cleanup_documents(
     try:
         report = await cleanup_problematic_documents(
             remove_training_docs=remove_training,
-            remove_computer_science=remove_offtopic,
+            remove_excluded_content=remove_offtopic,
             remove_corrupted=remove_corrupted,
             dry_run=dry_run,
         )
@@ -575,11 +863,11 @@ async def document_management_page(request: Request):
         # Convert analyses documents to dict format for JSON serialization
         analyses_dict = {
             "total_documents": analyses["total_documents"],
-            "bio_waste_documents": analyses["bio_waste_documents"],
+            "stem_documents": analyses["stem_documents"],
             "problematic_documents": analyses["problematic_documents"],
             "unknown_documents": analyses["unknown_documents"],
             "documents": {
-                "bio_waste": [doc.dict() for doc in analyses["documents"]["bio_waste"]],
+                "stem": [doc.dict() for doc in analyses["documents"]["stem"]],
                 "problematic": [
                     doc.dict() for doc in analyses["documents"]["problematic"]
                 ],
@@ -614,27 +902,26 @@ async def get_document_details(document_id: int):
         if not document:
             raise HTTPException(status_code=404, detail="Document not found")
 
-        # Get document content preview
-        file_path = Path(document.file_path) if hasattr(document, "file_path") else None
-        content_preview = ""
-        if file_path and file_path.exists():
-            try:
-                with open(file_path, "r", encoding="utf-8", errors="ignore") as f:
-                    content_preview = f.read(1000)  # First 1000 chars
-            except (IOError, OSError, UnicodeDecodeError):
-                content_preview = "Unable to read file content"
+        file_path = Path(document.file_path) if document.file_path else None
 
         return {
             "id": document.id,
-            "filename": document.filename,
+            "filename": document.original_filename or document.filename,
             "size": document.file_size,
             "content_type": document.content_type,
             "upload_date": (
-                document.upload_date.isoformat() if document.upload_date else None
+                document.upload_timestamp.isoformat()
+                if document.upload_timestamp
+                else None
             ),
-            "status": document.status,
+            "status": document.status.value if document.status else None,
             "file_path": str(file_path) if file_path else None,
-            "content_preview": content_preview,
+            # Already extracted at upload time (document_service.py) - reading
+            # the raw file here instead would decode a PDF/docx's binary
+            # bytes as UTF-8 text and produce garbage, not a real preview.
+            "content_preview": (document.text_content or "")[:1000],
+            "can_preview_inline": document.content_type == "application/pdf"
+            and bool(file_path),
             "metadata": getattr(document, "metadata", {}),
         }
     except HTTPException:

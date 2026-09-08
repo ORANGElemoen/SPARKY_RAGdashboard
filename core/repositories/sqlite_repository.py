@@ -224,6 +224,11 @@ class SQLiteRepository:
 class SQLiteDocumentRepository(SQLiteRepository, IDocumentRepository):
     """SQLite implementation of document repository"""
 
+    # Virtual "documents" created from thumbs-up rated tutor answers (see
+    # AnswerMemoryService) use this filename prefix so they can be kept out
+    # of the normal uploaded-document list/counts without a schema change.
+    TUTOR_ANSWER_FILENAME_PREFIX = "tutor_answer_"
+
     async def create(self, document: Document) -> Document:
         """Create a new document"""
         with self.get_connection() as conn:
@@ -358,18 +363,22 @@ class SQLiteDocumentRepository(SQLiteRepository, IDocumentRepository):
         offset = (options.page - 1) * options.page_size
 
         with self.get_connection() as conn:
-            # Count query
-            count_cursor = conn.execute("SELECT COUNT(*) FROM documents")
+            # Count query (excluding virtual tutor-answer documents)
+            count_cursor = conn.execute(
+                "SELECT COUNT(*) FROM documents WHERE filename NOT LIKE ?",
+                (f"{self.TUTOR_ANSWER_FILENAME_PREFIX}%",),
+            )
             total_count = count_cursor.fetchone()[0]
 
             # Data query
             cursor = conn.execute(
                 """
                 SELECT * FROM documents
+                WHERE filename NOT LIKE ?
                 ORDER BY created_at DESC
                 LIMIT ? OFFSET ?
             """,
-                (options.page_size, offset),
+                (f"{self.TUTOR_ANSWER_FILENAME_PREFIX}%", options.page_size, offset),
             )
 
             documents = [self._row_to_document(row) for row in cursor.fetchall()]
@@ -481,8 +490,113 @@ class SQLiteDocumentRepository(SQLiteRepository, IDocumentRepository):
 
     async def count(self, filters: Optional[Dict[str, Any]] = None) -> int:
         with self.get_connection() as conn:
-            cursor = conn.execute("SELECT COUNT(*) FROM documents")
+            cursor = conn.execute(
+                "SELECT COUNT(*) FROM documents WHERE filename NOT LIKE ?",
+                (f"{self.TUTOR_ANSWER_FILENAME_PREFIX}%",),
+            )
             return cursor.fetchone()[0]
+
+    async def create_chunk(
+        self, document_id: int, chunk_index: int, text_content: str
+    ) -> int:
+        """Insert one chunk row and return its id. Mirrors DocumentService's
+        upload-time chunk insertion (see document_service.py _store_chunks),
+        reused here so AnswerMemoryService writes chunks the same way."""
+        with self.get_connection() as conn:
+            cursor = conn.execute(
+                """
+                INSERT INTO chunks (document_id, chunk_index, text_content,
+                                     character_count, word_count)
+                VALUES (?, ?, ?, ?, ?)
+                """,
+                (
+                    document_id,
+                    chunk_index,
+                    text_content,
+                    len(text_content),
+                    len(text_content.split()),
+                ),
+            )
+            conn.commit()
+            return cursor.lastrowid
+
+    async def create_embedding(
+        self,
+        chunk_id: int,
+        document_id: int,
+        embedding_vector: "list[float]",
+        embedding_model: str = "all-MiniLM-L6-v2",
+    ) -> int:
+        """Insert one embedding row (gzip+pickle, matching how existing
+        embeddings are stored/read - see vector_repository.py's
+        _load_existing_embeddings) and return its id."""
+        import gzip
+        import pickle
+
+        compressed = gzip.compress(pickle.dumps(embedding_vector))
+
+        with self.get_connection() as conn:
+            cursor = conn.execute(
+                """
+                INSERT INTO embeddings (chunk_id, document_id, embedding_vector,
+                                         embedding_model, vector_dimension)
+                VALUES (?, ?, ?, ?, ?)
+                """,
+                (
+                    chunk_id,
+                    document_id,
+                    compressed,
+                    embedding_model,
+                    len(embedding_vector),
+                ),
+            )
+            conn.commit()
+            return cursor.lastrowid
+
+    async def get_embedding_ids_for_document(
+        self, document_id: int
+    ) -> "list[int]":
+        """Embedding IDs for a document, needed to remove it from the live
+        vector index (the index is keyed by embedding id, not document id)."""
+        with self.get_connection() as conn:
+            cursor = conn.execute(
+                "SELECT id FROM embeddings WHERE document_id = ?", (document_id,)
+            )
+            return [row["id"] for row in cursor.fetchall()]
+
+    async def get_chunk_details(
+        self, chunk_ids: "list[int]"
+    ) -> Dict[int, Dict[str, Any]]:
+        """Resolve chunk IDs to their current text and source document name.
+
+        Used by the interaction log admin view to show the actual snippet
+        a logged answer was grounded in - the log itself only stores
+        chunk/document IDs (see InteractionLogRepository), so this is
+        where they're joined back to live content at display time.
+        """
+        if not chunk_ids:
+            return {}
+
+        with self.get_connection() as conn:
+            placeholders = ",".join("?" * len(chunk_ids))
+            cursor = conn.execute(
+                f"""
+                SELECT c.id, c.text_content, c.document_id, d.original_filename
+                FROM chunks c
+                JOIN documents d ON c.document_id = d.id
+                WHERE c.id IN ({placeholders})
+            """,  # nosec B608 - placeholders is just repeated '?' characters
+                chunk_ids,
+            )
+
+            return {
+                row["id"]: {
+                    "text": row["text_content"],
+                    "document_id": row["document_id"],
+                    "document_name": row["original_filename"],
+                }
+                for row in cursor.fetchall()
+            }
 
     async def get_statistics(self) -> Dict[str, Any]:
         """Get document statistics"""

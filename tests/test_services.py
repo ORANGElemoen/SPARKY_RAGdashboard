@@ -59,26 +59,6 @@ class TestAsyncProcessingService:
                         time.sleep(0.1)
 
 
-class TestComplianceService:
-    """Test compliance service functionality."""
-
-    def test_compliance_service_import(self):
-        """Test that compliance service can be imported."""
-        from core.services.compliance_service import SwissDataProtectionService
-
-        assert SwissDataProtectionService is not None
-
-    def test_compliance_service_creation(self):
-        """Test creating a compliance service."""
-        from core.services.compliance_service import SwissDataProtectionService
-
-        with tempfile.TemporaryDirectory() as tmp_dir:
-            service = SwissDataProtectionService(
-                storage_path=tmp_dir, enable_audit_logging=False
-            )
-            assert service is not None
-
-
 class TestOptionalServices:
     """Test optional services that may not be available."""
 

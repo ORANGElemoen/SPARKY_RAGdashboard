@@ -6,7 +6,8 @@ Creates and manages all repository instances
 import logging
 from typing import Dict, Optional
 
-from .audit_repository import SwissAuditRepository
+from .device_repository import DeviceRepository
+from .interaction_log_repository import InteractionLogRepository
 from .interfaces import IDocumentRepository, IRAGRepository, IVectorSearchRepository
 from .sqlite_repository import SQLiteDocumentRepository
 from .vector_repository import ProductionVectorRepository
@@ -32,7 +33,6 @@ class ProductionRAGRepository(IRAGRepository):
     def __init__(
         self,
         db_path: Optional[str] = None,
-        audit_db_path: Optional[str] = None,
         vector_cache_size: int = 1000,
     ):
         # Use config paths if available
@@ -41,15 +41,13 @@ class ProductionRAGRepository(IRAGRepository):
         elif not db_path:
             db_path = "data/rag_database.db"
 
-        if not audit_db_path and config:
-            audit_db_path = str(config.BASE_DIR / "data" / "audit.db")
-        elif not audit_db_path:
-            audit_db_path = "data/audit.db"
-
         # Initialize repositories
         self._documents = SQLiteDocumentRepository(db_path)
         self._vector_search = ProductionVectorRepository(cache_size=vector_cache_size)
-        self._audit = SwissAuditRepository(audit_db_path)
+        # Same SQLite file as documents/chunks/embeddings (see InteractionLogRepository
+        # docstring for why this is deliberately not stored in the audit DB)
+        self._interaction_log = InteractionLogRepository(db_path)
+        self._devices = DeviceRepository(db_path)
 
         # Initialize chunks and embeddings from the same SQLite connection
         # (These would be implemented similarly to DocumentRepository)
@@ -110,15 +108,19 @@ class ProductionRAGRepository(IRAGRepository):
         return self._cache
 
     @property
-    def audit(self) -> SwissAuditRepository:
-        """Swiss audit repository"""
-        return self._audit
+    def interaction_log(self) -> InteractionLogRepository:
+        """Question/answer interaction log, for later manual review"""
+        return self._interaction_log
+
+    @property
+    def devices(self) -> DeviceRepository:
+        """Registered hardware devices (ESP32 tutor units) and their API keys"""
+        return self._devices
 
     async def initialize(self) -> bool:
         """Initialize all repositories"""
         try:
             # Document repository is initialized on creation (SQLite)
-            # Audit repository is initialized on creation (SQLite)
 
             # Ensure vector search repository is fully loaded
             await self._vector_search._ensure_embeddings_loaded()
@@ -157,15 +159,6 @@ class ProductionRAGRepository(IRAGRepository):
             health["vector_search"] = False
             logger.error(f"Vector search repository health check failed: {e}")
 
-        try:
-            # Check audit repository (simple connection test)
-            await self.audit.get_compliance_report(days_back=1)
-            health["audit"] = True
-            logger.debug("Audit repository health check passed")
-        except Exception as e:
-            health["audit"] = False
-            logger.error(f"Audit repository health check failed: {e}")
-
         # TODO: Add health checks for other repositories when implemented
 
         overall_health = all(health.values())
@@ -189,7 +182,6 @@ class RepositoryFactory:
     def create_production_repository(
         cls,
         db_path: Optional[str] = None,
-        audit_db_path: Optional[str] = None,
         vector_cache_size: int = 1000,
         force_new: bool = False,
         use_postgresql: bool = False,
@@ -200,7 +192,6 @@ class RepositoryFactory:
         if cls._instance is None or force_new:
             cls._instance = ProductionRAGRepository(
                 db_path=db_path,
-                audit_db_path=audit_db_path,
                 vector_cache_size=vector_cache_size,
             )
             logger.info("Created new production repository instance")
@@ -242,8 +233,3 @@ def get_document_repository() -> IDocumentRepository:
 def get_vector_search_repository() -> IVectorSearchRepository:
     """FastAPI dependency for vector search repository"""
     return get_rag_repository().vector_search
-
-
-def get_audit_repository() -> SwissAuditRepository:
-    """FastAPI dependency for audit repository"""
-    return get_rag_repository().audit

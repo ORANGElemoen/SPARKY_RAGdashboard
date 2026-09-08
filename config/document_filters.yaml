@@ -1,10 +1,32 @@
-# Document filter configuration
-# Controls how the admin document manager classifies and flags uploaded content.
-# Empty lists mean nothing is auto-flagged; add keywords here (or via the
-# admin interface) that are specific to your own domain/document set.
-
-bio_waste_keywords: []
-problematic_keywords: []
+stem_keywords:
+  - physics
+  - chemistry
+  - biology
+  - mathematics
+  - algebra
+  - geometry
+  - science
+  - experiment
+  - engineering
+  - technology
+  - programming
+  - algorithm
+  - energy
+  - electricity
+  - circuit
+  - force
+  - gravity
+  - molecule
+  - cell
+  - ecosystem
+problematic_keywords:
+  - zero-hallucination
+  - ignore previous instructions
+  - ignore all previous instructions
+  - you are an ai language model
+  - "system prompt:"
+# Deliberately empty - no genuinely off-topic content identified for this
+# tutor yet. Fill in if/when it comes up.
 exclude_keywords: []
-min_content_length: 100
 max_corruption_chars: 10
+min_content_length: 100

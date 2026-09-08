@@ -12,6 +12,12 @@ httpx>=0.25.0,<1.0.0
 fakeredis>=2.20.0,<3.0.0
 aiofiles>=23.2.0,<24.0.0
 
+# redis_cache_service.py is optional (gated behind ENABLE_REDIS_CACHE, off by
+# default) but test_redis_cache.py mocks its client - the real package still
+# needs to be importable for REDIS_AVAILABLE to be True, or every test in
+# that file short-circuits to "Redis not available" regardless of mocking
+redis>=4.5.0,<9.0.0
+
 # Linting and formatting
 flake8>=5.0.0,<8.0.0
 black>=22.0.0,<25.0.0

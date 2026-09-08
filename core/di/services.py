@@ -6,7 +6,6 @@ Configures all services in the DI container
 import logging
 from typing import Optional
 
-from ..repositories.audit_repository import SwissAuditRepository
 from ..repositories.factory import RepositoryFactory, get_rag_repository
 from ..repositories.interfaces import IDocumentRepository, IVectorSearchRepository
 from .container import DIContainer, get_container
@@ -47,10 +46,6 @@ class ServiceConfiguration:
 
         container.register_singleton(
             IVectorSearchRepository, lambda: get_rag_repository().vector_search
-        )
-
-        container.register_singleton(
-            SwissAuditRepository, lambda: get_rag_repository().audit
         )
 
         logger.info("Configured repository services")
@@ -95,7 +90,6 @@ class ServiceConfiguration:
             lambda: DocumentProcessingService(
                 doc_repo=container.get(IDocumentRepository),
                 vector_repo=container.get(IVectorSearchRepository),
-                audit_repo=container.get(SwissAuditRepository),
             ),
         )
 
@@ -105,7 +99,6 @@ class ServiceConfiguration:
             lambda: QueryProcessingService(
                 doc_repo=container.get(IDocumentRepository),
                 vector_repo=container.get(IVectorSearchRepository),
-                audit_repo=container.get(SwissAuditRepository),
                 ollama_client=container.get_optional("OllamaClient"),
             ),
         )
@@ -162,11 +155,6 @@ def get_vector_search_repository() -> IVectorSearchRepository:
     return get_container().get(IVectorSearchRepository)
 
 
-def get_audit_repository() -> SwissAuditRepository:
-    """FastAPI dependency for audit repository"""
-    return get_container().get(SwissAuditRepository)
-
-
 def get_ollama_client():
     """FastAPI dependency for Ollama client"""
     try:
@@ -190,27 +178,6 @@ def get_query_service() -> QueryProcessingService:
 def get_validation_service() -> ValidationService:
     """FastAPI dependency for validation service"""
     return get_container().get(ValidationService)
-
-
-# Convenience functions for common patterns
-def with_repositories(func):
-    """Decorator that injects common repositories"""
-    from functools import wraps
-
-    @wraps(func)
-    def wrapper(*args, **kwargs):
-        container = get_container()
-
-        if "doc_repo" not in kwargs:
-            kwargs["doc_repo"] = container.get(IDocumentRepository)
-        if "vector_repo" not in kwargs:
-            kwargs["vector_repo"] = container.get(IVectorSearchRepository)
-        if "audit_repo" not in kwargs:
-            kwargs["audit_repo"] = container.get(SwissAuditRepository)
-
-        return func(*args, **kwargs)
-
-    return wrapper
 
 
 async def initialize_services() -> bool:

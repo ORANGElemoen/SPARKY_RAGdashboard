@@ -22,7 +22,6 @@ from starlette.middleware.sessions import SessionMiddleware
 from .routers import (
     admin,
     async_processing,
-    compliance,
     document_manager,
     documents,
     llm,
@@ -47,9 +46,6 @@ from .services.async_processing_service import (
     initialize_async_processor,
     shutdown_async_processor,
 )
-
-# Import compliance service
-from .services.compliance_service import initialize_compliance_service
 
 # Import metrics
 from .services.metrics_service import init_metrics_service
@@ -184,15 +180,6 @@ async def lifespan(app: FastAPI):
         await register_document_processors()
         logger.info("Async document processing initialized successfully")
 
-        # Initialize compliance service
-        logger.info("Initializing compliance service...")
-        initialize_compliance_service(
-            storage_path="data/compliance",
-            enable_audit_logging=True,
-            data_residency_region="CH",
-        )
-        logger.info("Compliance service initialized successfully")
-
         # Initialize progress tracking service
         if PROGRESS_TRACKING_AVAILABLE:
             logger.info("Initializing progress tracking service...")
@@ -310,12 +297,15 @@ async def security_headers_middleware(request: Request, call_next):
         "media-src 'self' data: blob:; "
         "font-src 'self'; "
         "connect-src 'self'; "
-        "frame-ancestors 'none';"
+        "frame-ancestors 'self';"
     )
 
     # Security headers
     response.headers["X-Content-Type-Options"] = "nosniff"
-    response.headers["X-Frame-Options"] = "DENY"
+    # SAMEORIGIN (not DENY) - the document-management PDF preview embeds
+    # /api/v1/documents/{id}/download in an <iframe> from the same origin;
+    # DENY blocks that too, not just cross-site framing.
+    response.headers["X-Frame-Options"] = "SAMEORIGIN"
     response.headers["X-XSS-Protection"] = "1; mode=block"
     response.headers["Referrer-Policy"] = "strict-origin-when-cross-origin"
     response.headers["Permissions-Policy"] = "geolocation=(), microphone=(self), camera=()"
@@ -344,6 +334,28 @@ async def csrf_middleware(request: Request, call_next):
 
     # Skip CSRF for health checks and system endpoints
     if request.url.path in ["/health", "/api/v1/health", "/api/v1/status"]:
+        response = await call_next(request)
+        return response
+
+    # A registered hardware device (see core/routers/device_auth.py)
+    # authenticates via a per-device API key instead of a browser
+    # cookie/CSRF token - a different trust model that doesn't need CSRF's
+    # protection. A present-but-invalid key is rejected outright (401)
+    # rather than falling through to the CSRF check, since a garbage key on
+    # a request is almost certainly a misconfigured device, not a browser.
+    # An absent header leaves this entire block a no-op - browser requests
+    # behave exactly as before.
+    device_key = request.headers.get("X-Device-Key")
+    if device_key:
+        from .repositories.factory import RepositoryFactory
+
+        device = await RepositoryFactory.create_production_repository().devices.get_by_api_key(
+            device_key
+        )
+        if not device:
+            return JSONResponse(
+                status_code=401, content={"detail": "Invalid or revoked device key"}
+            )
         response = await call_next(request)
         return response
 
@@ -403,7 +415,6 @@ app.include_router(admin.router)
 app.include_router(document_manager.router)
 app.include_router(metrics.router)
 app.include_router(async_processing.router)
-app.include_router(compliance.router)
 app.include_router(voice.router)
 if PROGRESS_ROUTER_AVAILABLE:
     app.include_router(progress.router)

@@ -83,7 +83,9 @@ def test_security_headers_middleware():
         assert "X-Content-Type-Options" in response.headers
         assert response.headers["X-Content-Type-Options"] == "nosniff"
         assert "X-Frame-Options" in response.headers
-        assert response.headers["X-Frame-Options"] == "DENY"
+        # SAMEORIGIN, not DENY - the document-management PDF preview embeds
+        # /api/v1/documents/{id}/download in an <iframe> from the same origin
+        assert response.headers["X-Frame-Options"] == "SAMEORIGIN"
 
 
 def test_csrf_token_endpoint():

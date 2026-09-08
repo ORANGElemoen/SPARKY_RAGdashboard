@@ -1,0 +1,246 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Devices - STEM Voice Tutor Admin</title>
+    <link rel="stylesheet" href="/static/theme.css">
+    <style>
+        body { padding: var(--space-6); }
+
+        .admin-container {
+            max-width: 1200px;
+            margin: 0 auto;
+            background: var(--color-surface);
+            border-radius: var(--radius-xl);
+            box-shadow: var(--shadow-lg);
+            overflow: hidden;
+        }
+
+        .admin-header {
+            background: linear-gradient(160deg, var(--color-ink) 0%, var(--color-ink-soft) 100%);
+            color: white;
+            padding: var(--space-8) var(--space-8) var(--space-6);
+            text-align: center;
+            position: relative;
+            overflow: hidden;
+        }
+        .admin-header::before {
+            content: "";
+            position: absolute;
+            inset: 0;
+            background: radial-gradient(60% 90% at 50% -10%, rgba(59, 91, 219, 0.35), transparent 70%);
+            pointer-events: none;
+        }
+        .admin-header h1 { display: inline-flex; align-items: center; gap: var(--space-3); font-size: var(--text-2xl); margin-bottom: var(--space-2); position: relative; }
+        .admin-header h1 .icon { color: #8fa4ff; }
+        .admin-header p { opacity: 0.75; font-size: var(--text-sm); position: relative; }
+
+        .nav-links { margin-top: var(--space-5); display: flex; gap: var(--space-2); justify-content: center; position: relative; }
+        .nav-links a {
+            display: inline-flex;
+            align-items: center;
+            gap: var(--space-2);
+            background: rgba(255,255,255,0.08);
+            border: 1px solid var(--color-ink-border);
+            color: white;
+            padding: 9px 16px;
+            border-radius: var(--radius-full);
+            text-decoration: none;
+            font-size: var(--text-sm);
+            font-weight: var(--font-medium);
+            transition: background var(--duration-base) var(--ease-out), transform var(--duration-base) var(--ease-out);
+        }
+        .nav-links a:hover { background: rgba(255,255,255,0.16); transform: translateY(-1px); color: white; }
+
+        .admin-content { padding: var(--space-8); }
+
+        .toolbar {
+            display: flex;
+            flex-wrap: wrap;
+            gap: var(--space-3);
+            align-items: center;
+            margin-bottom: var(--space-6);
+            padding: var(--space-4);
+            background: var(--color-surface-alt);
+            border: 1px solid var(--color-border);
+            border-radius: var(--radius-md);
+        }
+        .toolbar input { width: auto; flex: 1; min-width: 200px; }
+
+        .new-key-banner {
+            display: none;
+            align-items: flex-start;
+            gap: var(--space-3);
+            padding: var(--space-4);
+            margin-bottom: var(--space-6);
+            background: var(--color-success-bg);
+            border: 1px solid var(--color-success-border);
+            border-radius: var(--radius-md);
+            color: var(--color-success);
+        }
+        .new-key-banner.show { display: flex; }
+        .new-key-banner code {
+            display: block;
+            margin-top: var(--space-2);
+            padding: var(--space-2) var(--space-3);
+            background: var(--color-ink);
+            color: #7ee787;
+            border-radius: var(--radius-sm);
+            font-size: var(--text-sm);
+            word-break: break-all;
+            user-select: all;
+        }
+
+        table { width: 100%; border-collapse: collapse; }
+        th, td { text-align: left; padding: var(--space-3) var(--space-4); font-size: var(--text-sm); border-bottom: 1px solid var(--color-border); }
+        th { color: var(--color-text-tertiary); font-weight: var(--font-medium); text-transform: uppercase; font-size: var(--text-xs); letter-spacing: 0.04em; }
+        tr:hover td { background: var(--color-surface-alt); }
+
+        .empty-state, .error-state { text-align: center; padding: var(--space-10); color: var(--color-text-tertiary); }
+        .error-state { color: var(--color-danger); }
+    </style>
+</head>
+<body>
+    <svg style="display:none" aria-hidden="true">
+      <symbol id="icon-cpu" viewBox="0 0 24 24"><rect x="6" y="6" width="12" height="12" rx="2"/><line x1="9" y1="2" x2="9" y2="6"/><line x1="15" y1="2" x2="15" y2="6"/><line x1="9" y1="18" x2="9" y2="22"/><line x1="15" y1="18" x2="15" y2="22"/><line x1="2" y1="9" x2="6" y2="9"/><line x1="2" y1="15" x2="6" y2="15"/><line x1="18" y1="9" x2="22" y2="9"/><line x1="18" y1="15" x2="22" y2="15"/></symbol>
+      <symbol id="icon-settings" viewBox="0 0 24 24"><circle cx="12" cy="12" r="3"/><path d="M12 2v3M12 19v3M4.2 4.2l2.1 2.1M17.7 17.7l2.1 2.1M2 12h3M19 12h3M4.2 19.8l2.1-2.1M17.7 6.3l2.1-2.1"/></symbol>
+      <symbol id="icon-home" viewBox="0 0 24 24"><path d="M4 11.5 12 4l8 7.5"/><path d="M6 10v9a1 1 0 0 0 1 1h4v-6h2v6h4a1 1 0 0 0 1-1v-9"/></symbol>
+      <symbol id="icon-flask" viewBox="0 0 24 24"><path d="M9 2v6.5L4.5 18a2 2 0 0 0 1.8 3h11.4a2 2 0 0 0 1.8-3L15 8.5V2"/><line x1="7" y1="2" x2="17" y2="2"/><line x1="7.5" y1="14" x2="16.5" y2="14"/></symbol>
+      <symbol id="icon-key" viewBox="0 0 24 24"><circle cx="8" cy="15" r="4"/><path d="M11 12l9-9M17 3l3 3M14 6l2 2"/></symbol>
+      <symbol id="icon-trash" viewBox="0 0 24 24"><path d="M4 6.5h16"/><path d="M8.5 6.5V5a1.5 1.5 0 0 1 1.5-1.5h4A1.5 1.5 0 0 1 15.5 5v1.5"/><path d="M6.5 6.5 7.3 19a1.5 1.5 0 0 0 1.5 1.4h6.4a1.5 1.5 0 0 0 1.5-1.4l.8-12.5"/></symbol>
+      <symbol id="icon-check-circle" viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><polyline points="8 12.5 11 15.5 16 9"/></symbol>
+    </svg>
+
+    <div class="admin-container">
+        <div class="admin-header">
+            <h1><svg class="icon"><use href="#icon-cpu"/></svg> Devices</h1>
+            <p>Registered ESP32 tutor units and their API keys</p>
+            <div class="nav-links">
+                <a href="/admin/protocol-test/view"><svg class="icon"><use href="#icon-flask"/></svg> Protocol Test</a>
+                <a href="/admin/"><svg class="icon"><use href="#icon-settings"/></svg> Admin Home</a>
+                <a href="/"><svg class="icon"><use href="#icon-home"/></svg> Main UI</a>
+            </div>
+        </div>
+
+        <div class="admin-content">
+            <div class="toolbar">
+                <input type="text" id="deviceName" class="input" placeholder="Device name, e.g. 'Classroom 3 - Unit A'">
+                <button id="createBtn" class="btn btn-primary"><svg class="icon"><use href="#icon-key"/></svg> Register device</button>
+            </div>
+
+            <div class="new-key-banner" id="newKeyBanner">
+                <svg class="icon"><use href="#icon-check-circle"/></svg>
+                <div style="flex:1">
+                    <strong id="newKeyName"></strong> registered. Copy this API key into the
+                    device's firmware config now - it will not be shown again.
+                    <code id="newKeyValue"></code>
+                </div>
+            </div>
+
+            <div id="devicesTable"></div>
+        </div>
+    </div>
+
+    <script>
+        async function getCsrfToken() {
+            const response = await fetch('/api/v1/csrf-token');
+            const data = await response.json();
+            return data.csrf_token;
+        }
+
+        function escapeHtml(text) {
+            const div = document.createElement('div');
+            div.textContent = text == null ? '' : String(text);
+            return div.innerHTML;
+        }
+
+        function formatTimestamp(ts) {
+            if (!ts) return 'Never';
+            const iso = ts.includes('T') ? ts : ts.replace(' ', 'T') + 'Z';
+            const d = new Date(iso);
+            return isNaN(d.getTime()) ? ts : d.toLocaleString();
+        }
+
+        async function loadDevices() {
+            const container = document.getElementById('devicesTable');
+            try {
+                const response = await fetch('/admin/devices');
+                if (!response.ok) throw new Error(`HTTP ${response.status}`);
+                const data = await response.json();
+
+                if (!data.devices || data.devices.length === 0) {
+                    container.innerHTML = '<div class="empty-state">No devices registered yet.</div>';
+                    return;
+                }
+
+                const rows = data.devices.map((d) => `
+                    <tr>
+                        <td>${escapeHtml(d.name)}</td>
+                        <td>${d.revoked_at ? '<span class="badge badge-danger">Revoked</span>' : '<span class="badge badge-success">Active</span>'}</td>
+                        <td>${formatTimestamp(d.created_at)}</td>
+                        <td>${formatTimestamp(d.last_seen_at)}</td>
+                        <td>${d.revoked_at ? '' : `<button class="btn btn-sm btn-danger" onclick="revokeDevice(${d.id}, '${escapeHtml(d.name)}')"><svg class="icon"><use href="#icon-trash"/></svg> Revoke</button>`}</td>
+                    </tr>
+                `).join('');
+
+                container.innerHTML = `
+                    <table>
+                        <thead><tr><th>Name</th><th>Status</th><th>Registered</th><th>Last seen</th><th></th></tr></thead>
+                        <tbody>${rows}</tbody>
+                    </table>
+                `;
+            } catch (error) {
+                container.innerHTML = `<div class="error-state">Failed to load devices: ${escapeHtml(error.message)}</div>`;
+            }
+        }
+
+        async function revokeDevice(id, name) {
+            if (!confirm(`Revoke "${name}"? It will no longer be able to authenticate.`)) return;
+            try {
+                const csrfToken = await getCsrfToken();
+                const response = await fetch(`/admin/devices/${id}`, {
+                    method: 'DELETE',
+                    headers: { 'X-CSRF-Token': csrfToken },
+                });
+                if (!response.ok) throw new Error(`HTTP ${response.status}`);
+                loadDevices();
+            } catch (error) {
+                alert(`Failed to revoke device: ${error.message}`);
+            }
+        }
+
+        document.getElementById('createBtn').addEventListener('click', async () => {
+            const nameInput = document.getElementById('deviceName');
+            const name = nameInput.value.trim();
+            if (!name) {
+                alert('Enter a device name first');
+                return;
+            }
+            try {
+                const csrfToken = await getCsrfToken();
+                const response = await fetch('/admin/devices', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json', 'X-CSRF-Token': csrfToken },
+                    body: JSON.stringify({ name }),
+                });
+                if (!response.ok) {
+                    const err = await response.json().catch(() => ({}));
+                    throw new Error(err.detail || `HTTP ${response.status}`);
+                }
+                const device = await response.json();
+
+                document.getElementById('newKeyName').textContent = device.name;
+                document.getElementById('newKeyValue').textContent = device.api_key;
+                document.getElementById('newKeyBanner').classList.add('show');
+                nameInput.value = '';
+                loadDevices();
+            } catch (error) {
+                alert(`Failed to register device: ${error.message}`);
+            }
+        });
+
+        loadDevices();
+    </script>
+</body>
+</html>

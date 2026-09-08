@@ -40,6 +40,18 @@ def test_client():
 
 
 @pytest.fixture
+def csrf_headers(test_client):
+    """CSRF header for a state-changing request against test_client.
+
+    Every POST/PUT/DELETE to /api/v1/* or /admin/* requires this (see the
+    CSRF middleware in core/main.py) - without it every such request gets a
+    blanket 403 before it ever reaches the endpoint's own logic.
+    """
+    token = test_client.get("/api/v1/csrf-token").json()["csrf_token"]
+    return {"X-CSRF-Token": token}
+
+
+@pytest.fixture
 def temp_db():
     """Create a temporary database for testing."""
     with tempfile.NamedTemporaryFile(suffix=".db", delete=False) as tmp:

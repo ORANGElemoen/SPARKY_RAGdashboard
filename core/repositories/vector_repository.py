@@ -538,6 +538,8 @@ class ProductionVectorRepository(IVectorSearchRepository):
                                     "embedding_id": embedding_id,
                                     "similarity_score": similarity_score,
                                     "chunk_index": chunk_info.get("chunk_index", 0),
+                                    "document_name": chunk_info.get("document_name"),
+                                    "has_file": chunk_info.get("has_file", True),
                                 },
                             )
                             chunks.append(chunk)
@@ -600,21 +602,32 @@ class ProductionVectorRepository(IVectorSearchRepository):
             # Safe SQL construction: placeholders is just repeated '?' characters
             query = f"""
                 SELECT e.id as embedding_id, c.id as chunk_id, c.document_id,
-                       c.text_content, c.chunk_index
+                       c.text_content, c.chunk_index, d.original_filename, d.file_path
                 FROM embeddings e
                 JOIN chunks c ON e.chunk_id = c.id
+                JOIN documents d ON c.document_id = d.id
                 WHERE e.id IN ({placeholders})
             """  # nosec B608
             cursor = conn.execute(query, embedding_ids)
 
             chunk_data = {}
             for row in cursor.fetchall():
-                embedding_id, chunk_id, document_id, text, chunk_index = row
+                (
+                    embedding_id,
+                    chunk_id,
+                    document_id,
+                    text,
+                    chunk_index,
+                    document_name,
+                    file_path,
+                ) = row
                 chunk_data[embedding_id] = {
                     "chunk_id": chunk_id,
                     "document_id": document_id,
                     "text": text,
                     "chunk_index": chunk_index,
+                    "document_name": document_name,
+                    "has_file": bool(file_path),
                 }
 
             conn.close()

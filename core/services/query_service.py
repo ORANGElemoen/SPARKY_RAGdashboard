@@ -6,7 +6,6 @@ Document chunk retrieval for the document viewer (GET /api/v1/documents/{id}/chu
 import logging
 from typing import Any, Dict, Optional
 
-from ..repositories.audit_repository import SwissAuditRepository
 from ..repositories.interfaces import IDocumentRepository, IVectorSearchRepository
 
 logger = logging.getLogger(__name__)
@@ -19,12 +18,10 @@ class QueryProcessingService:
         self,
         doc_repo: IDocumentRepository,
         vector_repo: IVectorSearchRepository,
-        audit_repo: SwissAuditRepository,
         ollama_client: Optional[Any] = None,
     ):
         self.doc_repo = doc_repo
         self.vector_repo = vector_repo
-        self.audit_repo = audit_repo
         self.ollama_client = ollama_client
 
     async def get_document_chunks(

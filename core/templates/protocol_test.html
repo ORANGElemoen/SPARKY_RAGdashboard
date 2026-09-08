@@ -1,0 +1,439 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Protocol Test - STEM Voice Tutor Admin</title>
+    <link rel="stylesheet" href="/static/theme.css">
+    <style>
+        body { padding: var(--space-6); }
+
+        .admin-container {
+            max-width: 1200px;
+            margin: 0 auto;
+            background: var(--color-surface);
+            border-radius: var(--radius-xl);
+            box-shadow: var(--shadow-lg);
+            overflow: hidden;
+        }
+
+        .admin-header {
+            background: linear-gradient(160deg, var(--color-ink) 0%, var(--color-ink-soft) 100%);
+            color: white;
+            padding: var(--space-8) var(--space-8) var(--space-6);
+            text-align: center;
+            position: relative;
+            overflow: hidden;
+        }
+        .admin-header::before {
+            content: "";
+            position: absolute;
+            inset: 0;
+            background: radial-gradient(60% 90% at 50% -10%, rgba(59, 91, 219, 0.35), transparent 70%);
+            pointer-events: none;
+        }
+        .admin-header h1 { display: inline-flex; align-items: center; gap: var(--space-3); font-size: var(--text-2xl); margin-bottom: var(--space-2); position: relative; }
+        .admin-header h1 .icon { color: #8fa4ff; }
+        .admin-header p { opacity: 0.75; font-size: var(--text-sm); position: relative; }
+
+        .nav-links { margin-top: var(--space-5); display: flex; gap: var(--space-2); justify-content: center; flex-wrap: wrap; position: relative; }
+        .nav-links a {
+            display: inline-flex;
+            align-items: center;
+            gap: var(--space-2);
+            background: rgba(255,255,255,0.08);
+            border: 1px solid var(--color-ink-border);
+            color: white;
+            padding: 9px 16px;
+            border-radius: var(--radius-full);
+            text-decoration: none;
+            font-size: var(--text-sm);
+            font-weight: var(--font-medium);
+            transition: background var(--duration-base) var(--ease-out), transform var(--duration-base) var(--ease-out);
+        }
+        .nav-links a:hover { background: rgba(255,255,255,0.16); transform: translateY(-1px); color: white; }
+
+        .admin-content { padding: var(--space-8); }
+
+        .setup-card {
+            display: flex;
+            flex-wrap: wrap;
+            gap: var(--space-3);
+            align-items: flex-end;
+            padding: var(--space-5);
+            background: var(--color-accent-soft);
+            border: 1px solid var(--color-accent-soft-border);
+            border-radius: var(--radius-md);
+            margin-bottom: var(--space-6);
+        }
+        .setup-card .field { flex: 1; min-width: 180px; }
+        .setup-card label { display: block; font-size: var(--text-xs); color: var(--color-text-secondary); margin-bottom: var(--space-1); font-weight: var(--font-medium); }
+
+        .new-key-note {
+            display: none;
+            margin-top: var(--space-3);
+            font-size: var(--text-xs);
+            color: var(--color-success);
+        }
+        .new-key-note.show { display: block; }
+
+        .test-card {
+            border: 1px solid var(--color-border);
+            border-radius: var(--radius-lg);
+            padding: var(--space-6);
+            margin-bottom: var(--space-5);
+        }
+        .test-card h2 {
+            display: flex;
+            align-items: center;
+            gap: var(--space-2);
+            font-size: var(--text-lg);
+            margin-bottom: var(--space-2);
+        }
+        .test-card h2 .icon { color: var(--color-accent); }
+        .test-card .description { color: var(--color-text-secondary); font-size: var(--text-sm); margin-bottom: var(--space-4); line-height: var(--leading-relaxed); }
+
+        .result-line {
+            display: flex;
+            align-items: center;
+            gap: var(--space-2);
+            padding: var(--space-2) 0;
+            font-size: var(--text-sm);
+            border-bottom: 1px solid var(--color-border);
+        }
+        .result-line:last-child { border-bottom: none; }
+        .result-line .icon.pass { color: var(--color-success); }
+        .result-line .icon.fail { color: var(--color-danger); }
+        .result-line .label { flex: 1; color: var(--color-text-secondary); }
+        .result-line .value { font-weight: var(--font-semibold); font-family: var(--font-mono); font-size: var(--text-xs); }
+
+        .results-box { margin-top: var(--space-4); animation: fadeSlideUp var(--duration-base) var(--ease-out) both; }
+        .metadata-json {
+            background: var(--color-ink);
+            color: #7ee787;
+            font-family: var(--font-mono);
+            font-size: var(--text-xs);
+            padding: var(--space-3);
+            border-radius: var(--radius-sm);
+            overflow-x: auto;
+            white-space: pre-wrap;
+            margin-top: var(--space-2);
+        }
+        .frame-item { margin-top: var(--space-2); display: flex; align-items: center; gap: var(--space-3); }
+        .frame-item audio { flex: 1; height: 32px; }
+
+        .verdict {
+            margin-top: var(--space-3);
+            padding: var(--space-3) var(--space-4);
+            border-radius: var(--radius-md);
+            font-size: var(--text-sm);
+            font-weight: var(--font-medium);
+        }
+        .verdict.good { background: var(--color-success-bg); color: var(--color-success); }
+        .verdict.bad { background: var(--color-danger-bg); color: var(--color-danger); }
+
+        .spinner-icon { animation: spin 0.85s linear infinite; }
+    </style>
+</head>
+<body>
+    <svg style="display:none" aria-hidden="true">
+      <symbol id="icon-flask" viewBox="0 0 24 24"><path d="M9 2v6.5L4.5 18a2 2 0 0 0 1.8 3h11.4a2 2 0 0 0 1.8-3L15 8.5V2"/><line x1="7" y1="2" x2="17" y2="2"/><line x1="7.5" y1="14" x2="16.5" y2="14"/></symbol>
+      <symbol id="icon-settings" viewBox="0 0 24 24"><circle cx="12" cy="12" r="3"/><path d="M12 2v3M12 19v3M4.2 4.2l2.1 2.1M17.7 17.7l2.1 2.1M2 12h3M19 12h3M4.2 19.8l2.1-2.1M17.7 6.3l2.1-2.1"/></symbol>
+      <symbol id="icon-home" viewBox="0 0 24 24"><path d="M4 11.5 12 4l8 7.5"/><path d="M6 10v9a1 1 0 0 0 1 1h4v-6h2v6h4a1 1 0 0 0 1-1v-9"/></symbol>
+      <symbol id="icon-key" viewBox="0 0 24 24"><circle cx="8" cy="15" r="4"/><path d="M11 12l9-9M17 3l3 3M14 6l2 2"/></symbol>
+      <symbol id="icon-shield" viewBox="0 0 24 24"><path d="M12 3l7 3v6c0 4.5-3 7.5-7 9-4-1.5-7-4.5-7-9V6l7-3z"/></symbol>
+      <symbol id="icon-radio" viewBox="0 0 24 24"><circle cx="12" cy="12" r="2.5"/><path d="M8.5 8.5a5 5 0 0 0 0 7"/><path d="M15.5 8.5a5 5 0 0 1 0 7"/><path d="M5.5 5.5a9 9 0 0 0 0 13"/><path d="M18.5 5.5a9 9 0 0 1 0 13"/></symbol>
+      <symbol id="icon-activity" viewBox="0 0 24 24"><polyline points="3 12 8 12 10 6 14 18 16 12 21 12"/></symbol>
+      <symbol id="icon-check-circle" viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><polyline points="8 12.5 11 15.5 16 9"/></symbol>
+      <symbol id="icon-x-circle" viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><line x1="9" y1="9" x2="15" y2="15"/><line x1="15" y1="9" x2="9" y2="15"/></symbol>
+      <symbol id="icon-loader" viewBox="0 0 24 24"><line x1="12" y1="2" x2="12" y2="6"/><line x1="12" y1="18" x2="12" y2="22" opacity="0.25"/><line x1="4.9" y1="4.9" x2="7.8" y2="7.8" opacity="0.9"/><line x1="16.2" y1="16.2" x2="19.1" y2="19.1" opacity="0.35"/><line x1="2" y1="12" x2="6" y2="12" opacity="0.8"/><line x1="18" y1="12" x2="22" y2="12" opacity="0.45"/><line x1="4.9" y1="19.1" x2="7.8" y2="16.2" opacity="0.6"/><line x1="16.2" y1="7.8" x2="19.1" y2="4.9" opacity="0.55"/></symbol>
+    </svg>
+
+    <div class="admin-container">
+        <div class="admin-header">
+            <h1><svg class="icon"><use href="#icon-flask"/></svg> Protocol Test</h1>
+            <p>Exercise device auth, the hardware voice protocol, and the concurrency fix - no curl required</p>
+            <div class="nav-links">
+                <a href="/admin/devices/view"><svg class="icon"><use href="#icon-key"/></svg> Devices</a>
+                <a href="/admin/"><svg class="icon"><use href="#icon-settings"/></svg> Admin Home</a>
+                <a href="/"><svg class="icon"><use href="#icon-home"/></svg> Main UI</a>
+            </div>
+        </div>
+
+        <div class="admin-content">
+            <div class="setup-card">
+                <div class="field">
+                    <label for="deviceName">Device name (to register a fresh one)</label>
+                    <input type="text" id="deviceName" class="input" placeholder="e.g. Protocol test device">
+                </div>
+                <button id="registerBtn" class="btn btn-secondary"><svg class="icon"><use href="#icon-key"/></svg> Register &amp; fill key</button>
+                <div class="field" style="flex-basis: 100%;">
+                    <label for="apiKey">API key (paste an existing one, or use the button above)</label>
+                    <input type="text" id="apiKey" class="input" placeholder="Paste a device API key here">
+                </div>
+            </div>
+            <div class="new-key-note" id="newKeyNote"></div>
+
+            <!-- Test 5: Device auth -->
+            <div class="test-card">
+                <h2><svg class="icon"><use href="#icon-shield"/></svg> Device auth vs. CSRF</h2>
+                <p class="description">
+                    Sends a text query with the API key above (should succeed with no CSRF token),
+                    then repeats it with a deliberately wrong key (should be rejected with 401,
+                    not the browser's generic 403).
+                </p>
+                <button class="btn btn-primary" onclick="runAuthTest()">Run test</button>
+                <div class="results-box" id="authResults"></div>
+            </div>
+
+            <!-- Test 6: Binary hardware protocol -->
+            <div class="test-card">
+                <h2><svg class="icon"><use href="#icon-radio"/></svg> Binary hardware protocol</h2>
+                <p class="description">
+                    Sends a short synthetic test tone (not real speech - the tutor will likely just
+                    ask you to repeat, that's expected) to <code>/api/v1/voice/query</code> with
+                    <code>Accept: application/x-tutor-voice</code>, then parses the framed binary
+                    response in the browser exactly the way firmware would: a 4-byte length, a JSON
+                    metadata block, then one or more length-prefixed WAV frames you can play below.
+                </p>
+                <button class="btn btn-primary" onclick="runProtocolTest()">Run test</button>
+                <div class="results-box" id="protocolResults"></div>
+            </div>
+
+            <!-- Test 7: Concurrency -->
+            <div class="test-card">
+                <h2><svg class="icon"><use href="#icon-activity"/></svg> Concurrency (event loop not blocked)</h2>
+                <p class="description">
+                    Starts a voice request (which takes a few seconds), and shortly after, fires a
+                    <code>/api/v1/health</code> check while the voice request is still running.
+                    Before the fix, health would have queued behind the voice request; now it
+                    should come back almost instantly regardless.
+                </p>
+                <button class="btn btn-primary" onclick="runConcurrencyTest()">Run test</button>
+                <div class="results-box" id="concurrencyResults"></div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        async function getCsrfToken() {
+            const response = await fetch('/api/v1/csrf-token');
+            const data = await response.json();
+            return data.csrf_token;
+        }
+
+        function escapeHtml(text) {
+            const div = document.createElement('div');
+            div.textContent = text == null ? '' : String(text);
+            return div.innerHTML;
+        }
+
+        function getApiKey() {
+            const key = document.getElementById('apiKey').value.trim();
+            if (!key) alert('Enter or register an API key first');
+            return key;
+        }
+
+        function resultLine(passed, label, value) {
+            const iconId = passed ? 'icon-check-circle' : 'icon-x-circle';
+            const cls = passed ? 'pass' : 'fail';
+            return `<div class="result-line">
+                <svg class="icon ${cls}"><use href="#${iconId}"/></svg>
+                <span class="label">${escapeHtml(label)}</span>
+                <span class="value">${escapeHtml(value)}</span>
+            </div>`;
+        }
+
+        // --- Device registration ---
+        document.getElementById('registerBtn').addEventListener('click', async () => {
+            const name = document.getElementById('deviceName').value.trim();
+            if (!name) { alert('Enter a device name first'); return; }
+            try {
+                const csrfToken = await getCsrfToken();
+                const response = await fetch('/admin/devices', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json', 'X-CSRF-Token': csrfToken },
+                    body: JSON.stringify({ name }),
+                });
+                if (!response.ok) {
+                    const err = await response.json().catch(() => ({}));
+                    throw new Error(err.detail || `HTTP ${response.status}`);
+                }
+                const device = await response.json();
+                document.getElementById('apiKey').value = device.api_key;
+                const note = document.getElementById('newKeyNote');
+                note.textContent = `Registered "${device.name}" and filled its key in above. This key is shown once - it's already in the field, nothing more to copy.`;
+                note.classList.add('show');
+            } catch (error) {
+                alert(`Failed to register device: ${error.message}`);
+            }
+        });
+
+        // --- Test 5: device auth vs CSRF ---
+        async function runAuthTest() {
+            const key = getApiKey();
+            if (!key) return;
+            const resultsDiv = document.getElementById('authResults');
+            resultsDiv.innerHTML = '<p>Running…</p>';
+
+            const validResp = await fetch('/api/v1/query', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json', 'X-Device-Key': key },
+                body: JSON.stringify({ query: 'What is a magnet?' }),
+            });
+            const validPassed = validResp.status === 200;
+
+            const bogusResp = await fetch('/api/v1/query', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json', 'X-Device-Key': 'deliberately-wrong-key' },
+                body: JSON.stringify({ query: 'What is a magnet?' }),
+            });
+            const bogusPassed = bogusResp.status === 401;
+
+            resultsDiv.innerHTML = `
+                ${resultLine(validPassed, 'Valid key, no CSRF token', `HTTP ${validResp.status} (expected 200)`)}
+                ${resultLine(bogusPassed, 'Bogus key', `HTTP ${bogusResp.status} (expected 401)`)}
+                <div class="verdict ${validPassed && bogusPassed ? 'good' : 'bad'}">
+                    ${validPassed && bogusPassed ? 'Device auth is working correctly.' : 'Something is off - check the device key and that the server is running the latest code.'}
+                </div>
+            `;
+        }
+
+        // --- Test 6: binary hardware protocol ---
+        function generateTestWav(durationSeconds, freq, sampleRate) {
+            const numSamples = Math.floor(durationSeconds * sampleRate);
+            const buffer = new ArrayBuffer(44 + numSamples * 2);
+            const view = new DataView(buffer);
+            const writeString = (offset, str) => {
+                for (let i = 0; i < str.length; i++) view.setUint8(offset + i, str.charCodeAt(i));
+            };
+            writeString(0, 'RIFF');
+            view.setUint32(4, 36 + numSamples * 2, true);
+            writeString(8, 'WAVE');
+            writeString(12, 'fmt ');
+            view.setUint32(16, 16, true);
+            view.setUint16(20, 1, true);
+            view.setUint16(22, 1, true);
+            view.setUint32(24, sampleRate, true);
+            view.setUint32(28, sampleRate * 2, true);
+            view.setUint16(32, 2, true);
+            view.setUint16(34, 16, true);
+            writeString(36, 'data');
+            view.setUint32(40, numSamples * 2, true);
+            for (let i = 0; i < numSamples; i++) {
+                const sample = Math.sin(2 * Math.PI * freq * i / sampleRate) * 0.3 * 32767;
+                view.setInt16(44 + i * 2, sample, true);
+            }
+            return new Blob([buffer], { type: 'audio/wav' });
+        }
+
+        function parseHardwareResponse(arrayBuffer) {
+            const view = new DataView(arrayBuffer);
+            let offset = 0;
+            const metaLen = view.getUint32(offset, false);
+            offset += 4;
+            const metaBytes = arrayBuffer.slice(offset, offset + metaLen);
+            const metadata = JSON.parse(new TextDecoder('utf-8').decode(metaBytes));
+            offset += metaLen;
+
+            const frames = [];
+            for (let i = 0; i < metadata.frame_count; i++) {
+                const frameLen = view.getUint32(offset, false);
+                offset += 4;
+                frames.push(arrayBuffer.slice(offset, offset + frameLen));
+                offset += frameLen;
+            }
+            return { metadata, frames, consumedBytes: offset, totalBytes: arrayBuffer.byteLength };
+        }
+
+        async function runProtocolTest() {
+            const key = getApiKey();
+            if (!key) return;
+            const resultsDiv = document.getElementById('protocolResults');
+            resultsDiv.innerHTML = '<p><svg class="icon spinner-icon"><use href="#icon-loader"/></svg> Synthesizing test tone and calling the endpoint…</p>';
+
+            try {
+                const wavBlob = generateTestWav(1.0, 440, 16000);
+                const formData = new FormData();
+                formData.append('audio', wavBlob, 'test-tone.wav');
+
+                const response = await fetch('/api/v1/voice/query', {
+                    method: 'POST',
+                    headers: { 'X-Device-Key': key, 'Accept': 'application/x-tutor-voice' },
+                    body: formData,
+                });
+
+                if (!response.ok) {
+                    const err = await response.json().catch(() => ({}));
+                    resultsDiv.innerHTML = `<div class="verdict bad">Request failed: HTTP ${response.status} - ${escapeHtml(err.detail || '')}</div>`;
+                    return;
+                }
+
+                const arrayBuffer = await response.arrayBuffer();
+                const { metadata, frames, consumedBytes, totalBytes } = parseHardwareResponse(arrayBuffer);
+                const bytesMatch = consumedBytes === totalBytes;
+
+                const frameHtml = frames.map((frameBytes, i) => {
+                    const url = URL.createObjectURL(new Blob([frameBytes], { type: 'audio/wav' }));
+                    return `<div class="frame-item">
+                        <span class="value">Frame ${i + 1}/${frames.length} (${frameBytes.byteLength} bytes)</span>
+                        <audio controls src="${url}"></audio>
+                    </div>`;
+                }).join('');
+
+                resultsDiv.innerHTML = `
+                    ${resultLine(true, 'Response received', `HTTP ${response.status}`)}
+                    ${resultLine(bytesMatch, 'Every byte accounted for while parsing frames', `${consumedBytes} / ${totalBytes} bytes`)}
+                    ${resultLine(frames.length === metadata.frame_count, 'Frame count matches metadata', `${frames.length} frames`)}
+                    <div class="metadata-json">${escapeHtml(JSON.stringify(metadata, null, 2))}</div>
+                    ${frameHtml}
+                    <div class="verdict ${bytesMatch ? 'good' : 'bad'}">
+                        ${bytesMatch ? 'The binary protocol round-tripped correctly - press play on a frame above to hear it.' : 'Byte count mismatch - the framing may be broken.'}
+                    </div>
+                `;
+            } catch (error) {
+                resultsDiv.innerHTML = `<div class="verdict bad">Error: ${escapeHtml(error.message)}</div>`;
+            }
+        }
+
+        // --- Test 7: concurrency ---
+        async function runConcurrencyTest() {
+            const key = getApiKey();
+            if (!key) return;
+            const resultsDiv = document.getElementById('concurrencyResults');
+            resultsDiv.innerHTML = '<p><svg class="icon spinner-icon"><use href="#icon-loader"/></svg> Starting a voice request, then checking health mid-flight…</p>';
+
+            const wavBlob = generateTestWav(1.0, 440, 16000);
+            const formData = new FormData();
+            formData.append('audio', wavBlob, 'test-tone.wav');
+
+            const voiceStart = performance.now();
+            const voicePromise = fetch('/api/v1/voice/query', {
+                method: 'POST',
+                headers: { 'X-Device-Key': key },
+                body: formData,
+            }).then(() => performance.now() - voiceStart);
+
+            // Give the voice request a moment to actually start before checking health
+            await new Promise((resolve) => setTimeout(resolve, 300));
+
+            const healthStart = performance.now();
+            await fetch('/api/v1/health');
+            const healthTime = performance.now() - healthStart;
+
+            const voiceTime = await voicePromise;
+            const healthWasFast = healthTime < 500;
+
+            resultsDiv.innerHTML = `
+                ${resultLine(true, 'Voice request total time', `${voiceTime.toFixed(0)} ms`)}
+                ${resultLine(healthWasFast, 'Health check while voice was in flight', `${healthTime.toFixed(0)} ms`)}
+                <div class="verdict ${healthWasFast ? 'good' : 'bad'}">
+                    ${healthWasFast
+                        ? `Health responded in ${healthTime.toFixed(0)}ms while a ${voiceTime.toFixed(0)}ms voice request was still running - the event loop isn't blocked.`
+                        : `Health took ${healthTime.toFixed(0)}ms - that's slower than expected while a voice request is in flight.`}
+                </div>
+            `;
+        }
+    </script>
+</body>
+</html>

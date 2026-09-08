@@ -1,0 +1,168 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Diagnostics - STEM Voice Tutor Admin</title>
+    <link rel="stylesheet" href="/static/theme.css">
+    <style>
+        body { padding: var(--space-6); }
+
+        .admin-container {
+            max-width: 1200px;
+            margin: 0 auto;
+            background: var(--color-surface);
+            border-radius: var(--radius-xl);
+            box-shadow: var(--shadow-lg);
+            overflow: hidden;
+        }
+
+        .admin-header {
+            background: linear-gradient(160deg, var(--color-ink) 0%, var(--color-ink-soft) 100%);
+            color: white;
+            padding: var(--space-8) var(--space-8) var(--space-6);
+            text-align: center;
+            position: relative;
+            overflow: hidden;
+        }
+        .admin-header::before {
+            content: "";
+            position: absolute;
+            inset: 0;
+            background: radial-gradient(60% 90% at 50% -10%, rgba(59, 91, 219, 0.35), transparent 70%);
+            pointer-events: none;
+        }
+        .admin-header h1 { display: inline-flex; align-items: center; gap: var(--space-3); font-size: var(--text-2xl); margin-bottom: var(--space-2); position: relative; }
+        .admin-header h1 .icon { color: #8fa4ff; }
+        .admin-header p { opacity: 0.75; font-size: var(--text-sm); position: relative; }
+
+        .nav-links { margin-top: var(--space-5); display: flex; gap: var(--space-2); justify-content: center; position: relative; }
+        .nav-links a {
+            display: inline-flex;
+            align-items: center;
+            gap: var(--space-2);
+            background: rgba(255,255,255,0.08);
+            border: 1px solid var(--color-ink-border);
+            color: white;
+            padding: 9px 16px;
+            border-radius: var(--radius-full);
+            text-decoration: none;
+            font-size: var(--text-sm);
+            font-weight: var(--font-medium);
+            transition: background var(--duration-base) var(--ease-out), transform var(--duration-base) var(--ease-out);
+        }
+        .nav-links a:hover { background: rgba(255,255,255,0.16); transform: translateY(-1px); color: white; }
+
+        .admin-content { padding: var(--space-8); }
+
+        .diag-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
+            gap: var(--space-4);
+        }
+
+        .diag-card {
+            border: 1px solid var(--color-border);
+            border-radius: var(--radius-lg);
+            padding: var(--space-5);
+            background: var(--color-surface-alt);
+        }
+        .diag-card h3 {
+            display: flex;
+            align-items: center;
+            gap: var(--space-2);
+            font-size: var(--text-sm);
+            color: var(--color-text-secondary);
+            font-weight: var(--font-medium);
+            margin-bottom: var(--space-3);
+        }
+        .diag-card h3 .icon { color: var(--color-accent); }
+        .diag-row { display: flex; justify-content: space-between; font-size: var(--text-sm); padding: 4px 0; }
+        .diag-row .label { color: var(--color-text-tertiary); }
+        .diag-row .value { font-weight: var(--font-semibold); }
+
+        .refresh-bar { display: flex; justify-content: flex-end; margin-bottom: var(--space-5); }
+        .error-state { text-align: center; padding: var(--space-10); color: var(--color-danger); }
+    </style>
+</head>
+<body>
+    <svg style="display:none" aria-hidden="true">
+      <symbol id="icon-activity" viewBox="0 0 24 24"><polyline points="3 12 8 12 10 6 14 18 16 12 21 12"/></symbol>
+      <symbol id="icon-settings" viewBox="0 0 24 24"><circle cx="12" cy="12" r="3"/><path d="M12 2v3M12 19v3M4.2 4.2l2.1 2.1M17.7 17.7l2.1 2.1M2 12h3M19 12h3M4.2 19.8l2.1-2.1M17.7 6.3l2.1-2.1"/></symbol>
+      <symbol id="icon-home" viewBox="0 0 24 24"><path d="M4 11.5 12 4l8 7.5"/><path d="M6 10v9a1 1 0 0 0 1 1h4v-6h2v6h4a1 1 0 0 0 1-1v-9"/></symbol>
+      <symbol id="icon-sparkle" viewBox="0 0 24 24"><path d="M12 3l1.8 5.2L19 10l-5.2 1.8L12 17l-1.8-5.2L5 10l5.2-1.8L12 3z"/><path d="M19 3.2l.55 1.55 1.55.55-1.55.55-.55 1.55-.55-1.55-1.55-.55 1.55-.55.55-1.55z"/></symbol>
+      <symbol id="icon-database" viewBox="0 0 24 24"><ellipse cx="12" cy="5.5" rx="7.5" ry="2.5"/><path d="M4.5 5.5v13c0 1.4 3.4 2.5 7.5 2.5s7.5-1.1 7.5-2.5v-13"/><path d="M4.5 12c0 1.4 3.4 2.5 7.5 2.5s7.5-1.1 7.5-2.5"/></symbol>
+      <symbol id="icon-cpu" viewBox="0 0 24 24"><rect x="6" y="6" width="12" height="12" rx="2"/><line x1="9" y1="2" x2="9" y2="6"/><line x1="15" y1="2" x2="15" y2="6"/><line x1="9" y1="18" x2="9" y2="22"/><line x1="15" y1="18" x2="15" y2="22"/><line x1="2" y1="9" x2="6" y2="9"/><line x1="2" y1="15" x2="6" y2="15"/><line x1="18" y1="9" x2="22" y2="9"/><line x1="18" y1="15" x2="22" y2="15"/></symbol>
+      <symbol id="icon-refresh" viewBox="0 0 24 24"><path d="M4 12a8 8 0 0 1 14-5.3M20 12a8 8 0 0 1-14 5.3"/><polyline points="18 3 18 7 14 7"/><polyline points="6 21 6 17 10 17"/></symbol>
+    </svg>
+
+    <div class="admin-container">
+        <div class="admin-header">
+            <h1><svg class="icon"><use href="#icon-activity"/></svg> Diagnostics</h1>
+            <p>A live snapshot of the tutor's own health - no new tracking, just what already exists</p>
+            <div class="nav-links">
+                <a href="/admin/"><svg class="icon"><use href="#icon-settings"/></svg> Admin Home</a>
+                <a href="/"><svg class="icon"><use href="#icon-home"/></svg> Main UI</a>
+            </div>
+        </div>
+
+        <div class="admin-content">
+            <div class="refresh-bar">
+                <button id="refreshBtn" class="btn btn-secondary"><svg class="icon"><use href="#icon-refresh"/></svg> Refresh</button>
+            </div>
+            <div id="diagContent"><div class="diag-grid"><p>Loading…</p></div></div>
+        </div>
+    </div>
+
+    <script>
+        function fmtPercent(n) { return n == null ? 'n/a' : `${n.toFixed(1)}%`; }
+        function fmtSeconds(s) {
+            if (s == null) return 'n/a';
+            const h = Math.floor(s / 3600), m = Math.floor((s % 3600) / 60);
+            return h > 0 ? `${h}h ${m}m` : `${m}m`;
+        }
+
+        async function loadDiagnostics() {
+            const content = document.getElementById('diagContent');
+            try {
+                const response = await fetch('/admin/diagnostics');
+                if (!response.ok) throw new Error(`HTTP ${response.status}`);
+                const d = await response.json();
+
+                content.innerHTML = `
+                    <div class="diag-grid">
+                        <div class="diag-card">
+                            <h3><svg class="icon"><use href="#icon-sparkle"/></svg> Ollama / LLM</h3>
+                            <div class="diag-row"><span class="label">Available</span><span class="value">${d.ollama.available ? 'Yes' : 'No'}</span></div>
+                            <div class="diag-row"><span class="label">Model</span><span class="value">${d.ollama.model || 'n/a'}</span></div>
+                            ${d.ollama.error ? `<div class="diag-row"><span class="label">Error</span><span class="value">${d.ollama.error}</span></div>` : ''}
+                        </div>
+                        <div class="diag-card">
+                            <h3><svg class="icon"><use href="#icon-database"/></svg> Response cache</h3>
+                            <div class="diag-row"><span class="label">Entries</span><span class="value">${d.cache.entries}</span></div>
+                            <div class="diag-row"><span class="label">Size</span><span class="value">${d.cache.total_size_mb} MB</span></div>
+                        </div>
+                        <div class="diag-card">
+                            <h3><svg class="icon"><use href="#icon-cpu"/></svg> Devices</h3>
+                            <div class="diag-row"><span class="label">Active</span><span class="value">${d.devices.active}</span></div>
+                            <div class="diag-row"><span class="label">Revoked</span><span class="value">${d.devices.revoked}</span></div>
+                            <div class="diag-row"><span class="label">Last seen</span><span class="value">${d.devices.most_recently_seen ? d.devices.most_recently_seen.name : 'n/a'}</span></div>
+                        </div>
+                        <div class="diag-card">
+                            <h3><svg class="icon"><use href="#icon-activity"/></svg> System</h3>
+                            <div class="diag-row"><span class="label">Uptime</span><span class="value">${fmtSeconds(d.system.uptime_seconds)}</span></div>
+                            <div class="diag-row"><span class="label">CPU</span><span class="value">${fmtPercent(d.system.system && d.system.system.cpu_percent)}</span></div>
+                            <div class="diag-row"><span class="label">Memory</span><span class="value">${fmtPercent(d.system.system && d.system.system.memory_percent)}</span></div>
+                        </div>
+                    </div>
+                `;
+            } catch (error) {
+                content.innerHTML = `<div class="error-state">Failed to load diagnostics: ${error.message}</div>`;
+            }
+        }
+
+        document.getElementById('refreshBtn').addEventListener('click', loadDiagnostics);
+        loadDiagnostics();
+    </script>
+</body>
+</html>

@@ -16,6 +16,15 @@ from typing import Any, Callable, Dict, List, Optional, Set
 logger = logging.getLogger(__name__)
 
 
+def _json_default(obj):
+    """json.dump default= hook: Enums serialize as their .value (e.g.
+    "pending"), matching what ProgressStatus(value) expects on load -
+    plain str() would give "ProgressStatus.PENDING" instead."""
+    if isinstance(obj, Enum):
+        return obj.value
+    return str(obj)
+
+
 class ProgressStatus(Enum):
     """Progress status enumeration"""
 
@@ -112,7 +121,11 @@ class ProgressTracker:
                 "last_updated": time.time(),
             }
             with open(self.persistence_file, "w", encoding="utf-8") as f:
-                json.dump(data, f, indent=2, default=str)
+                # default=str alone would serialize ProgressStatus.PENDING as
+                # the string "ProgressStatus.PENDING" (Enum's default __str__),
+                # not "pending" - _dict_to_operation's ProgressStatus(value)
+                # lookup needs the latter, so enums must use .value explicitly.
+                json.dump(data, f, indent=2, default=_json_default)
         except Exception as e:
             logger.error(f"Failed to save operations: {e}")
 
@@ -216,12 +229,18 @@ class ProgressTracker:
         self,
         operation_id: str,
         step_index: int,
-        progress: float,
+        progress: Optional[float],
         status: Optional[ProgressStatus] = None,
         error: Optional[str] = None,
         metadata: Optional[Dict[str, Any]] = None,
     ) -> bool:
-        """Update progress for a specific step"""
+        """Update progress for a specific step.
+
+        progress=None leaves the step's current progress value untouched
+        (e.g. fail_step reports a failure without claiming a specific
+        completion percentage - the step may have failed 45% of the way
+        through, not at 0%).
+        """
         async with self._lock:
             if operation_id not in self.operations:
                 return False
@@ -233,7 +252,8 @@ class ProgressTracker:
             step = operation.steps[step_index]
 
             # Update step
-            step.progress = max(0.0, min(1.0, progress))
+            if progress is not None:
+                step.progress = max(0.0, min(1.0, progress))
             if status:
                 step.status = status
                 if status == ProgressStatus.RUNNING and not step.started_at:

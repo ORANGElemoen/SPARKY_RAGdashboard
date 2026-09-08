@@ -367,7 +367,11 @@ class RedisCacheService:
         embedding_hash = hashlib.sha256(query_embedding.tobytes()).hexdigest()[:16]
         cache_key = f"{embedding_hash}:k{top_k}"
 
-        return await self.get(CacheKeyType.SEARCH_RESULT, cache_key, tenant_id)
+        cached_data = await self.get(CacheKeyType.SEARCH_RESULT, cache_key, tenant_id)
+        if cached_data and "results" in cached_data:
+            return cached_data["results"]
+
+        return None
 
     async def set_search_results(
         self,

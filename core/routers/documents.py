@@ -165,8 +165,9 @@ async def download_document(
     document_id: int,
     doc_service: DocumentProcessingService = Depends(get_document_service),
     validation_service: ValidationService = Depends(get_validation_service),
+    doc_repo: IDocumentRepository = Depends(get_document_repository),
 ):
-    """Download a specific document file"""
+    """Download (or inline-view, for browser-renderable types) a document file"""
     try:
         # Validate document ID
         is_valid, message = validation_service.validate_document_id(document_id)
@@ -176,11 +177,22 @@ async def download_document(
         # Get file path from service
         file_path = await doc_service.get_download_path(document_id)
 
-        # Return file response
+        document = await doc_repo.get_by_id(document_id)
+        media_type = (
+            document.content_type
+            if document and document.content_type
+            else "application/octet-stream"
+        )
+
+        # "inline" (not FileResponse's default "attachment") lets a browser
+        # render a PDF/image/text file directly - e.g. in the admin document
+        # preview iframe - while still falling back to a normal download for
+        # types it can't display inline.
         return FileResponse(
             path=str(file_path),
             filename=file_path.name,
-            media_type="application/octet-stream",
+            media_type=media_type,
+            content_disposition_type="inline",
         )
 
     except HTTPException:

@@ -7,6 +7,7 @@ from unittest.mock import AsyncMock, MagicMock, patch
 
 import numpy as np
 import pytest
+import pytest_asyncio
 
 try:
     from core.services.redis_cache_service import (
@@ -46,7 +47,7 @@ def mock_redis():
     return mock_client
 
 
-@pytest.fixture
+@pytest_asyncio.fixture
 async def cache_service(mock_redis):
     """Create cache service with mocked Redis"""
     with patch("core.services.redis_cache_service.aioredis") as mock_aioredis:

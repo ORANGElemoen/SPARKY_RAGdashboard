@@ -63,7 +63,9 @@ class TestSecurityHeaders:
         assert "X-Content-Type-Options" in response.headers
         assert response.headers["X-Content-Type-Options"] == "nosniff"
         assert "X-Frame-Options" in response.headers
-        assert response.headers["X-Frame-Options"] == "DENY"
+        # SAMEORIGIN, not DENY - the document-management PDF preview embeds
+        # /api/v1/documents/{id}/download in an <iframe> from the same origin
+        assert response.headers["X-Frame-Options"] == "SAMEORIGIN"
         assert "Content-Security-Policy" in response.headers
 
     def test_cors_headers(self, test_client):
@@ -96,23 +98,23 @@ class TestDocumentEndpoints:
 class TestQueryEndpoints:
     """Test query endpoints."""
 
-    def test_query_endpoint_accessible(self, test_client):
+    def test_query_endpoint_accessible(self, test_client, csrf_headers):
         """Test that query endpoint is accessible."""
         # Test with a simple query
         query_data = {"query": "What is the capital of France?"}
 
-        response = test_client.post("/api/v1/query", json=query_data)
+        response = test_client.post("/api/v1/query", json=query_data, headers=csrf_headers)
         # Should be reachable, might fail due to service dependencies
         assert response.status_code in [200, 422, 503]
 
-    def test_query_endpoint_validation(self, test_client):
+    def test_query_endpoint_validation(self, test_client, csrf_headers):
         """Test query endpoint input validation."""
         # Test with invalid input
-        response = test_client.post("/api/v1/query", json={})
+        response = test_client.post("/api/v1/query", json={}, headers=csrf_headers)
         assert response.status_code == 422  # Validation error
 
         # Test with empty query
-        response = test_client.post("/api/v1/query", json={"query": ""})
+        response = test_client.post("/api/v1/query", json={"query": ""}, headers=csrf_headers)
         assert response.status_code in [422, 400]  # Should validate query not empty
 
 

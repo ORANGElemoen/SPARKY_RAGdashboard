@@ -1,0 +1,427 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Interaction Log - STEM Voice Tutor Admin</title>
+    <link rel="stylesheet" href="/static/theme.css">
+    <style>
+        body { padding: var(--space-6); }
+
+        .admin-container {
+            max-width: 1200px;
+            margin: 0 auto;
+            background: var(--color-surface);
+            border-radius: var(--radius-xl);
+            box-shadow: var(--shadow-lg);
+            overflow: hidden;
+        }
+
+        .admin-header {
+            background: linear-gradient(160deg, var(--color-ink) 0%, var(--color-ink-soft) 100%);
+            color: white;
+            padding: var(--space-8) var(--space-8) var(--space-6);
+            text-align: center;
+            position: relative;
+            overflow: hidden;
+        }
+        .admin-header::before {
+            content: "";
+            position: absolute;
+            inset: 0;
+            background: radial-gradient(60% 90% at 50% -10%, rgba(59, 91, 219, 0.35), transparent 70%);
+            pointer-events: none;
+        }
+
+        .admin-header h1 { display: inline-flex; align-items: center; gap: var(--space-3); font-size: var(--text-2xl); margin-bottom: var(--space-2); position: relative; }
+        .admin-header h1 .icon { color: #8fa4ff; }
+        .admin-header p { opacity: 0.75; font-size: var(--text-sm); position: relative; }
+
+        .admin-header .nav-links { margin-top: var(--space-5); display: flex; gap: var(--space-2); justify-content: center; position: relative; }
+        .admin-header .nav-links a {
+            display: inline-flex;
+            align-items: center;
+            gap: var(--space-2);
+            background: rgba(255,255,255,0.08);
+            border: 1px solid var(--color-ink-border);
+            color: white;
+            padding: 9px 16px;
+            border-radius: var(--radius-full);
+            text-decoration: none;
+            font-size: var(--text-sm);
+            font-weight: var(--font-medium);
+            transition: background var(--duration-base) var(--ease-out), transform var(--duration-base) var(--ease-out);
+        }
+        .admin-header .nav-links a:hover { background: rgba(255,255,255,0.16); transform: translateY(-1px); color: white; }
+
+        .admin-content { padding: var(--space-8); }
+
+        .toolbar {
+            display: flex;
+            flex-wrap: wrap;
+            gap: var(--space-3);
+            align-items: center;
+            margin-bottom: var(--space-6);
+            padding: var(--space-4);
+            background: var(--color-surface-alt);
+            border: 1px solid var(--color-border);
+            border-radius: var(--radius-md);
+        }
+
+        .toolbar label { font-size: var(--text-sm); color: var(--color-text-secondary); margin-right: -4px; }
+        .toolbar input, .toolbar select { width: auto; }
+        .toolbar .spacer { flex: 1; }
+        .toolbar .summary { font-size: var(--text-xs); color: var(--color-text-tertiary); }
+
+        .entry {
+            border: 1px solid var(--color-border);
+            border-radius: var(--radius-md);
+            margin-bottom: var(--space-3);
+            overflow: hidden;
+            transition: box-shadow var(--duration-base) var(--ease-out);
+        }
+        .entry:hover { box-shadow: var(--shadow-xs); }
+
+        .entry-header {
+            display: flex;
+            flex-wrap: wrap;
+            gap: var(--space-3);
+            align-items: center;
+            padding: var(--space-3) var(--space-4);
+            background: var(--color-surface-alt);
+            cursor: pointer;
+        }
+
+        .entry-header .question { font-weight: var(--font-semibold); flex: 1; min-width: 200px; font-size: var(--text-sm); }
+        .entry-header .session-link {
+            font-family: var(--font-mono);
+            font-size: var(--text-xs);
+            color: var(--color-accent);
+            text-decoration: none;
+            cursor: pointer;
+        }
+        .entry-header .session-link:hover { color: var(--color-accent-hover); }
+        .entry-header .timestamp { font-size: var(--text-xs); color: var(--color-text-tertiary); white-space: nowrap; }
+        .entry-header .chevron { transition: transform var(--duration-base) var(--ease-out); color: var(--color-text-tertiary); }
+        .entry-header.open .chevron { transform: rotate(180deg); }
+
+        .entry-body {
+            display: grid;
+            grid-template-rows: 0fr;
+            transition: grid-template-rows var(--duration-slow) var(--ease-out);
+        }
+        .entry-body > div { overflow: hidden; }
+        .entry-body.open { grid-template-rows: 1fr; }
+        .entry-body-inner { padding: var(--space-4); border-top: 1px solid var(--color-border); }
+
+        .section-label {
+            font-size: var(--text-xs);
+            text-transform: uppercase;
+            letter-spacing: 0.06em;
+            color: var(--color-text-tertiary);
+            font-weight: var(--font-semibold);
+            margin-bottom: var(--space-1);
+            margin-top: var(--space-4);
+        }
+        .section-label:first-child { margin-top: 0; }
+
+        .answer-text, .question-text { white-space: pre-wrap; line-height: var(--leading-relaxed); font-size: var(--text-sm); }
+
+        .source-item {
+            border-left: 2px solid var(--color-accent-soft-border);
+            background: var(--color-surface-alt);
+            padding: var(--space-2) var(--space-3);
+            margin-bottom: var(--space-2);
+            border-radius: 0 var(--radius-sm) var(--radius-sm) 0;
+        }
+        .source-item .source-doc { font-weight: var(--font-semibold); font-size: var(--text-sm); }
+        .source-item .source-text { white-space: pre-wrap; font-size: var(--text-xs); color: var(--color-text-secondary); margin-top: var(--space-1); }
+
+        .no-sources { color: var(--color-text-tertiary); font-style: italic; font-size: var(--text-sm); }
+
+        .rating-bar {
+            display: flex;
+            align-items: center;
+            gap: var(--space-2);
+            margin-top: var(--space-4);
+            padding-top: var(--space-4);
+            border-top: 1px solid var(--color-border);
+        }
+        .rating-bar button {
+            display: inline-flex;
+            align-items: center;
+            gap: var(--space-2);
+        }
+        .rating-bar button.active.good { background: var(--color-success-bg); border-color: var(--color-success); color: var(--color-success); }
+        .rating-bar button.active.bad { background: var(--color-danger-bg); border-color: var(--color-danger); color: var(--color-danger); }
+        .rating-bar .rating-status { font-size: var(--text-xs); color: var(--color-text-tertiary); }
+
+        .empty-state, .error-state { text-align: center; padding: var(--space-10); color: var(--color-text-tertiary); }
+        .error-state { color: var(--color-danger); }
+
+        .pagination { display: flex; justify-content: center; gap: var(--space-3); margin-top: var(--space-6); }
+    </style>
+</head>
+<body>
+    <svg style="display:none" aria-hidden="true">
+      <symbol id="icon-message" viewBox="0 0 24 24"><path d="M4 5.5A2.5 2.5 0 0 1 6.5 3h11A2.5 2.5 0 0 1 20 5.5v8a2.5 2.5 0 0 1-2.5 2.5H10l-5 4v-4H6.5A2.5 2.5 0 0 1 4 13.5v-8z"/></symbol>
+      <symbol id="icon-settings" viewBox="0 0 24 24"><circle cx="12" cy="12" r="3"/><path d="M12 2v3M12 19v3M4.2 4.2l2.1 2.1M17.7 17.7l2.1 2.1M2 12h3M19 12h3M4.2 19.8l2.1-2.1M17.7 6.3l2.1-2.1"/></symbol>
+      <symbol id="icon-home" viewBox="0 0 24 24"><path d="M4 11.5 12 4l8 7.5"/><path d="M6 10v9a1 1 0 0 0 1 1h4v-6h2v6h4a1 1 0 0 0 1-1v-9"/></symbol>
+      <symbol id="icon-chevron-down" viewBox="0 0 24 24"><polyline points="6 9 12 15 18 9"/></symbol>
+      <symbol id="icon-thumbs-up" viewBox="0 0 24 24"><path d="M7 11v9H4.5A1.5 1.5 0 0 1 3 18.5v-6A1.5 1.5 0 0 1 4.5 11H7z"/><path d="M7 11l3.5-7a2 2 0 0 1 2 2v3.5H18a2 2 0 0 1 2 2.4l-1.4 6A2 2 0 0 1 16.6 20H10a3 3 0 0 1-3-3v-6z"/></symbol>
+      <symbol id="icon-thumbs-down" viewBox="0 0 24 24"><path d="M17 13V4h2.5A1.5 1.5 0 0 1 21 5.5v6a1.5 1.5 0 0 1-1.5 1.5H17z"/><path d="M17 13l-3.5 7a2 2 0 0 1-2-2v-3.5H6a2 2 0 0 1-2-2.4l1.4-6A2 2 0 0 1 7.4 4H14a3 3 0 0 1 3 3v6z"/></symbol>
+      <symbol id="icon-globe" viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><ellipse cx="12" cy="12" rx="4" ry="9"/><line x1="3" y1="12" x2="21" y2="12"/></symbol>
+    </svg>
+
+    <div class="admin-container">
+        <div class="admin-header">
+            <h1><svg class="icon"><use href="#icon-message"/></svg> Interaction Log</h1>
+            <p>Every question asked, the tutor's answer, and the sources it was grounded in</p>
+            <div class="nav-links">
+                <a href="/admin/"><svg class="icon"><use href="#icon-settings"/></svg> Admin Home</a>
+                <a href="/"><svg class="icon"><use href="#icon-home"/></svg> Main UI</a>
+            </div>
+        </div>
+
+        <div class="admin-content">
+            <div class="toolbar">
+                <label for="sessionFilter">Chat (session) ID:</label>
+                <input type="text" id="sessionFilter" class="input" placeholder="Paste a session_id to filter to one conversation">
+                <label for="sortBy">Sort:</label>
+                <select id="sortBy" class="input">
+                    <option value="timestamp">Most recent first</option>
+                    <option value="session">Grouped by chat</option>
+                </select>
+                <button id="applyBtn" class="btn btn-primary">Apply</button>
+                <button id="clearBtn" class="btn btn-secondary">Clear filter</button>
+                <div class="spacer"></div>
+                <div class="summary" id="summary"></div>
+            </div>
+
+            <div id="entries"></div>
+            <div class="pagination">
+                <button id="prevBtn" class="btn btn-secondary">&larr; Newer</button>
+                <button id="nextBtn" class="btn btn-secondary">Older &rarr;</button>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        const PAGE_SIZE = 25;
+        let offset = 0;
+        let sessionFilter = '';
+        let sortBy = 'timestamp';
+
+        function escapeHtml(text) {
+            const div = document.createElement('div');
+            div.textContent = text == null ? '' : String(text);
+            return div.innerHTML;
+        }
+
+        async function getCsrfToken() {
+            const response = await fetch('/api/v1/csrf-token');
+            const data = await response.json();
+            return data.csrf_token;
+        }
+
+        async function setRating(interactionId, rating, statusEl) {
+            statusEl.textContent = 'Saving…';
+            try {
+                const csrfToken = await getCsrfToken();
+                const response = await fetch(`/admin/interaction-log/${interactionId}/rating`, {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                        'X-CSRF-Token': csrfToken,
+                    },
+                    body: JSON.stringify({ rating }),
+                });
+                if (!response.ok) {
+                    const err = await response.json().catch(() => ({}));
+                    statusEl.textContent = `Failed: ${err.detail || response.status}`;
+                    return null;
+                }
+                return await response.json();
+            } catch (error) {
+                statusEl.textContent = `Network error: ${error.message}`;
+                return null;
+            }
+        }
+
+        function formatTimestamp(ts) {
+            if (!ts) return '';
+            // SQLite CURRENT_TIMESTAMP is UTC without a timezone marker
+            const iso = ts.includes('T') ? ts : ts.replace(' ', 'T') + 'Z';
+            const d = new Date(iso);
+            return isNaN(d.getTime()) ? ts : d.toLocaleString();
+        }
+
+        function renderSources(sources) {
+            if (!sources || sources.length === 0) {
+                return '<p class="no-sources">No relevant document was found for this question — the tutor answered from its own general knowledge.</p>';
+            }
+            return sources.map((s) => `
+                <div class="source-item">
+                    <div class="source-doc">${escapeHtml(s.document_name || (s.document_id != null ? `Document ${s.document_id}` : 'Unknown source'))}</div>
+                    ${s.text ? `<div class="source-text">${escapeHtml(s.text)}</div>` : ''}
+                </div>
+            `).join('');
+        }
+
+        function renderEntry(entry) {
+            const typeBadge = entry.query_type === 'voice'
+                ? '<span class="badge badge-info">voice</span>'
+                : '<span class="badge badge-accent">text</span>';
+            const knowledgeBadge = entry.used_general_knowledge
+                ? '<span class="badge badge-warning">General knowledge</span>'
+                : '<span class="badge badge-success">Grounded in documents</span>';
+            const sessionLabel = entry.session_id ? escapeHtml(entry.session_id) : '(no session)';
+
+            const wrapper = document.createElement('div');
+            wrapper.className = 'entry';
+            wrapper.innerHTML = `
+                <div class="entry-header">
+                    <svg class="icon chevron"><use href="#icon-chevron-down"/></svg>
+                    ${typeBadge}
+                    ${knowledgeBadge}
+                    <span class="question">#${entry.id} — ${escapeHtml(entry.question_text)}</span>
+                    <a class="session-link" title="Filter to this chat">${sessionLabel}</a>
+                    <span class="timestamp">${formatTimestamp(entry.timestamp)}</span>
+                </div>
+                <div class="entry-body"><div><div class="entry-body-inner">
+                    <div class="section-label">Question (as understood by the model)</div>
+                    <div class="question-text">${escapeHtml(entry.question_text)}</div>
+
+                    <div class="section-label">Answer</div>
+                    <div class="answer-text">${escapeHtml(entry.answer_text)}</div>
+
+                    <div class="section-label">Sources used (${(entry.sources || []).length})</div>
+                    ${renderSources(entry.sources)}
+
+                    <div class="section-label">Confidence</div>
+                    <div>${entry.confidence != null ? (entry.confidence * 100).toFixed(1) + '%' : 'n/a'}</div>
+
+                    <div class="rating-bar">
+                        <button class="btn btn-secondary rate-good ${entry.rating === 'good' ? 'active good' : ''}"><svg class="icon"><use href="#icon-thumbs-up"/></svg> Good</button>
+                        <button class="btn btn-secondary rate-bad ${entry.rating === 'bad' ? 'active bad' : ''}"><svg class="icon"><use href="#icon-thumbs-down"/></svg> Bad</button>
+                        ${entry.promoted_document_id ? '<span class="badge badge-success memory-badge"><svg class="icon"><use href="#icon-globe"/></svg> In global memory</span>' : ''}
+                        <span class="rating-status"></span>
+                    </div>
+                </div></div></div>
+            `;
+
+            const header = wrapper.querySelector('.entry-header');
+            const body = wrapper.querySelector('.entry-body');
+            header.addEventListener('click', (e) => {
+                if (e.target.closest('.session-link')) return;
+                header.classList.toggle('open');
+                body.classList.toggle('open');
+            });
+
+            const sessionLink = wrapper.querySelector('.session-link');
+            if (entry.session_id) {
+                sessionLink.addEventListener('click', () => {
+                    document.getElementById('sessionFilter').value = entry.session_id;
+                    offset = 0;
+                    loadEntries();
+                });
+            }
+
+            const statusEl = wrapper.querySelector('.rating-status');
+            const goodBtn = wrapper.querySelector('.rate-good');
+            const badBtn = wrapper.querySelector('.rate-bad');
+
+            const handleRate = async (targetRating, clickedBtn) => {
+                // Clicking an already-active rating clears it (toggle off)
+                const nextRating = entry.rating === targetRating ? null : targetRating;
+                clickedBtn.disabled = true;
+                const result = await setRating(entry.id, nextRating, statusEl);
+                clickedBtn.disabled = false;
+                if (result) {
+                    entry.rating = result.rating;
+                    entry.promoted_document_id = result.promoted_document_id;
+                    goodBtn.classList.toggle('active', entry.rating === 'good');
+                    goodBtn.classList.toggle('good', entry.rating === 'good');
+                    badBtn.classList.toggle('active', entry.rating === 'bad');
+                    badBtn.classList.toggle('bad', entry.rating === 'bad');
+                    const existingBadge = wrapper.querySelector('.memory-badge');
+                    if (entry.promoted_document_id && !existingBadge) {
+                        statusEl.insertAdjacentHTML('beforebegin', '<span class="badge badge-success memory-badge"><svg class="icon"><use href="#icon-globe"/></svg> In global memory</span>');
+                    } else if (!entry.promoted_document_id && existingBadge) {
+                        existingBadge.remove();
+                    }
+                    statusEl.textContent = '';
+                }
+            };
+
+            goodBtn.addEventListener('click', () => handleRate('good', goodBtn));
+            badBtn.addEventListener('click', () => handleRate('bad', badBtn));
+
+            return wrapper;
+        }
+
+        async function loadEntries() {
+            const entriesDiv = document.getElementById('entries');
+            const summary = document.getElementById('summary');
+            entriesDiv.innerHTML = '<div class="empty-state">Loading…</div>';
+
+            const params = new URLSearchParams({
+                limit: PAGE_SIZE,
+                offset: offset,
+                sort_by: sortBy,
+            });
+            if (sessionFilter) params.set('session_id', sessionFilter);
+
+            try {
+                const response = await fetch(`/admin/interaction-log?${params.toString()}`);
+                if (!response.ok) {
+                    const err = await response.json().catch(() => ({}));
+                    entriesDiv.innerHTML = `<div class="error-state">Failed to load: ${escapeHtml(err.detail || response.status)}</div>`;
+                    return;
+                }
+                const data = await response.json();
+
+                if (!data.interactions || data.interactions.length === 0) {
+                    entriesDiv.innerHTML = '<div class="empty-state">No logged questions match this filter yet.</div>';
+                } else {
+                    entriesDiv.innerHTML = '';
+                    data.interactions.forEach((entry) => entriesDiv.appendChild(renderEntry(entry)));
+                }
+
+                const shown = data.interactions ? data.interactions.length : 0;
+                summary.textContent = `Showing ${offset + (shown ? 1 : 0)}–${offset + shown} of ${data.total_count}`;
+                document.getElementById('prevBtn').disabled = offset === 0;
+                document.getElementById('nextBtn').disabled = offset + shown >= data.total_count;
+            } catch (error) {
+                entriesDiv.innerHTML = `<div class="error-state">Network error: ${escapeHtml(error.message)}</div>`;
+            }
+        }
+
+        document.getElementById('applyBtn').addEventListener('click', () => {
+            sessionFilter = document.getElementById('sessionFilter').value.trim();
+            sortBy = document.getElementById('sortBy').value;
+            offset = 0;
+            loadEntries();
+        });
+
+        document.getElementById('clearBtn').addEventListener('click', () => {
+            document.getElementById('sessionFilter').value = '';
+            sessionFilter = '';
+            offset = 0;
+            loadEntries();
+        });
+
+        document.getElementById('prevBtn').addEventListener('click', () => {
+            offset = Math.max(0, offset - PAGE_SIZE);
+            loadEntries();
+        });
+
+        document.getElementById('nextBtn').addEventListener('click', () => {
+            offset += PAGE_SIZE;
+            loadEntries();
+        });
+
+        loadEntries();
+    </script>
+</body>
+</html>

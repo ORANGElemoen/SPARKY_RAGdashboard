@@ -14,7 +14,7 @@ prompt_template: |
   DOKUMENTE:
   {context}
 
-  FRAGE: {query}
+  {conversation_history}FRAGE: {query}
 
   ANTWORT (einfach, spannend und motivierend, für ein Kind):
 
@@ -28,7 +28,7 @@ general_prompt_template: |
   Biologie oder Elektrizität mit einfacher Sprache und Alltagsbeispielen.
   Fördere die Neugier und mache das Lernen spannend.
 
-  FRAGE: {query}
+  {conversation_history}FRAGE: {query}
 
   ANTWORT (einfach, spannend und motivierend, für ein Kind):
 
@@ -39,3 +39,10 @@ voice_error_prompt: "Entschuldigung, da ist etwas schiefgelaufen. Kannst du es n
 sources_label: "Quellen"
 source_line: "[Quelle {id}] Dokument {document_id} - {url}"
 truncated_notice: "[...gekürzt für bessere Performance...]"
+
+# Gibt dem Lehrer ein Kurzzeitgedächtnis für frühere Runden derselben
+# Sitzung, damit Rückfragen wie "wie funktioniert das?" richtig aufgelöst
+# werden. Entfällt komplett, wenn es noch keine vorherige Runde gibt.
+conversation_history_label: "BISHERIGES GESPRÄCH"
+conversation_learner_label: "Kind"
+conversation_tutor_label: "Lehrer"

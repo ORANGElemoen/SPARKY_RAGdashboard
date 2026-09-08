@@ -1,12 +1,5 @@
-default_model: mistral
+default_model: llama3.2
 models:
-  arlesheim-german:
-    context_length: 32768
-    description: Fine-tuned model for Arlesheim municipality - German language
-    max_tokens: 2048
-    name: arlesheim-german:latest
-    prompt_template: default
-    temperature: 0.2
   command-r:
     context_length: 128000
     description: 'Best for RAG - Optimized for retrieval tasks (Install with: ollama

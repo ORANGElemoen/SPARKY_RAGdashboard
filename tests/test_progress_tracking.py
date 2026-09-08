@@ -9,6 +9,7 @@ from pathlib import Path
 from unittest.mock import AsyncMock, MagicMock
 
 import pytest
+import pytest_asyncio
 
 try:
     from core.services.progress_tracking_service import (
@@ -27,14 +28,19 @@ except ImportError:
     pytest.skip("Progress tracking service not available", allow_module_level=True)
 
 
-@pytest.fixture
+@pytest_asyncio.fixture
 async def temp_tracker():
     """Create a temporary progress tracker"""
-    with tempfile.NamedTemporaryFile(suffix=".json", delete=False) as tmp:
-        tracker = ProgressTracker(persistence_file=tmp.name)
-        yield tracker
-        # Cleanup
-        Path(tmp.name).unlink(missing_ok=True)
+    # Close the handle immediately rather than holding it open for the
+    # `with` block's lifetime - on Windows, ProgressTracker opening the same
+    # path for writing while this handle is still open raises WinError 32
+    # (file in use), unlike POSIX where that's allowed.
+    tmp = tempfile.NamedTemporaryFile(suffix=".json", delete=False)
+    tmp.close()
+    tracker = ProgressTracker(persistence_file=tmp.name)
+    yield tracker
+    # Cleanup
+    Path(tmp.name).unlink(missing_ok=True)
 
 
 @pytest.mark.asyncio
@@ -284,6 +290,7 @@ async def test_callbacks(temp_tracker):
 async def test_progress_context():
     """Test progress context manager"""
     with tempfile.NamedTemporaryFile(suffix=".json", delete=False) as tmp:
+        tmp.close()  # release the handle - Windows can't share it with ProgressTracker otherwise
         tracker = ProgressTracker(persistence_file=tmp.name)
 
         operation_id = await tracker.create_operation(
@@ -309,6 +316,7 @@ async def test_progress_context():
 async def test_progress_context_error():
     """Test progress context manager with error"""
     with tempfile.NamedTemporaryFile(suffix=".json", delete=False) as tmp:
+        tmp.close()  # release the handle - Windows can't share it with ProgressTracker otherwise
         tracker = ProgressTracker(persistence_file=tmp.name)
 
         operation_id = await tracker.create_operation(
@@ -379,6 +387,7 @@ async def test_cleanup_old_operations(temp_tracker):
 async def test_estimated_completion():
     """Test estimated completion time calculation"""
     with tempfile.NamedTemporaryFile(suffix=".json", delete=False) as tmp:
+        tmp.close()  # release the handle - Windows can't share it with ProgressTracker otherwise
         tracker = ProgressTracker(persistence_file=tmp.name)
 
         operation_id = await tracker.create_operation(

@@ -14,7 +14,6 @@ from typing import Any, Dict, List, Optional, Tuple
 
 from ..middleware import TenantContext
 from ..models.api_models import DocumentResponse, DocumentUpdate
-from ..repositories.audit_repository import SwissAuditRepository
 from ..repositories.interfaces import IDocumentRepository, IVectorSearchRepository
 from ..utils.encryption import get_encryption_manager, is_encryption_enabled
 
@@ -36,11 +35,9 @@ class DocumentProcessingService:
         self,
         doc_repo: IDocumentRepository,
         vector_repo: IVectorSearchRepository,
-        audit_repo: SwissAuditRepository,
     ):
         self.doc_repo = doc_repo
         self.vector_repo = vector_repo
-        self.audit_repo = audit_repo
 
         # File validation settings
         self.max_file_size = getattr(config, "MAX_FILE_SIZE", 50 * 1024 * 1024)  # 50MB
@@ -54,28 +51,6 @@ class DocumentProcessingService:
             "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
         }
 
-        # Content filtering settings
-        self.problematic_keywords = [
-            "zero-hallucination",
-            "guidelines for following",
-            "only use information",
-            "additional guidelines",
-            "training instructions",
-            "quelels",
-        ]
-        self.bio_waste_keywords = [
-            "bioabfall",
-            "bio waste",
-            "organic waste",
-            "kompost",
-            "grünabfall",
-            "küchenabfälle",
-            "obst",
-            "gemüse",
-            "fruit",
-            "vegetable",
-            "food waste",
-        ]
 
     async def validate_upload(
         self, filename: str, content: bytes, content_type: str
@@ -202,8 +177,6 @@ class DocumentProcessingService:
                 filename, content, content_type
             )
             if not is_valid:
-                # Note: Audit logging would go here in production
-                # await self.audit_repo.log_event(audit_entry)
                 raise ValueError(validation_message)
 
             # Sanitize filename
@@ -745,74 +718,3 @@ class DocumentProcessingService:
         finally:
             conn.close()
 
-    def analyze_document_content(self, text_content: str) -> Dict[str, Any]:
-        """Analyze document content for problematic patterns"""
-        content_lower = text_content.lower()
-
-        # Check for problematic content
-        problematic_score = sum(
-            1 for keyword in self.problematic_keywords if keyword in content_lower
-        )
-
-        # Check for bio waste content
-        bio_waste_score = sum(
-            1 for keyword in self.bio_waste_keywords if keyword in content_lower
-        )
-
-        # Check for encoding issues
-        corruption_score = text_content.count("�")
-
-        # Classify content type
-        content_type = "unknown"
-        if bio_waste_score >= 2:
-            content_type = "bio_waste"
-        elif problematic_score > 0:
-            content_type = "training_instructions"
-        elif any(
-            cs in content_lower for cs in ["javascript", "programming", "software"]
-        ):
-            content_type = "computer_science"
-
-        is_problematic = (
-            problematic_score > 0
-            or (corruption_score > 10)
-            or (len(text_content.strip()) < 100 and content_type != "bio_waste")
-        )
-
-        return {
-            "content_type": content_type,
-            "is_problematic": is_problematic,
-            "bio_waste_score": bio_waste_score,
-            "problematic_score": problematic_score,
-            "corruption_score": corruption_score,
-            "content_length": len(text_content),
-            "recommendation": "reject" if is_problematic else "accept",
-        }
-
-    async def validate_document_content(
-        self, text_content: str
-    ) -> Tuple[bool, str, Dict[str, Any]]:
-        """Validate document content and return analysis"""
-        analysis = self.analyze_document_content(text_content)
-
-        if analysis["is_problematic"]:
-            reasons = []
-            if analysis["problematic_score"] > 0:
-                reasons.append("contains training instructions")
-            if analysis["corruption_score"] > 10:
-                reasons.append("has encoding corruption")
-            if analysis["content_length"] < 100:
-                reasons.append("content too short")
-
-            return False, f"Document rejected: {', '.join(reasons)}", analysis
-
-        if analysis["content_type"] == "bio_waste":
-            return True, "Bio waste document accepted", analysis
-        elif analysis["content_type"] == "unknown" and len(text_content.strip()) > 200:
-            return True, "General document accepted", analysis
-        else:
-            return (
-                False,
-                "Document type not suitable for bio waste RAG system",
-                analysis,
-            )

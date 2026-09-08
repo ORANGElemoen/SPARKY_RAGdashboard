@@ -27,7 +27,7 @@ class DocumentAnalysis(BaseModel):
 class CleanupReport(BaseModel):
     total_documents: int
     problematic_documents: int
-    bio_waste_documents: int
+    stem_documents: int
     removed_documents: List[int]
     status: str
 
@@ -121,7 +121,7 @@ async def analyze_all_documents():
 @router.post("/cleanup", response_model=CleanupReport)
 async def cleanup_problematic_documents(
     remove_training_docs: bool = True,
-    remove_computer_science: bool = True,
+    remove_excluded_content: bool = True,
     remove_corrupted: bool = True,
     dry_run: bool = False,
 ):
@@ -138,7 +138,7 @@ async def cleanup_problematic_documents(
 
         total_docs = len(analyses)
         problematic_docs = [a for a in analyses if a.is_problematic]
-        bio_waste_docs = [a for a in analyses if a.content_type == "bio_waste"]
+        stem_docs = [a for a in analyses if a.content_type == "stem_content"]
 
         removed_document_ids = []
 
@@ -153,8 +153,8 @@ async def cleanup_problematic_documents(
                 ):
                     should_remove = True
                 if (
-                    remove_computer_science
-                    and "computer_science" in analysis.problematic_reasons
+                    remove_excluded_content
+                    and "excluded_content" in analysis.problematic_reasons
                 ):
                     should_remove = True
                 if (
@@ -182,12 +182,12 @@ async def cleanup_problematic_documents(
                         )
 
             # Rebuild vector index with clean documents only
-            await _rebuild_clean_vector_index(repos, bio_waste_docs)
+            await _rebuild_clean_vector_index(repos, stem_docs)
 
         report = CleanupReport(
             total_documents=total_docs,
             problematic_documents=len(problematic_docs),
-            bio_waste_documents=len(bio_waste_docs),
+            stem_documents=len(stem_docs),
             removed_documents=removed_document_ids,
             status="completed" if not dry_run else "dry_run_completed",
         )
@@ -210,12 +210,12 @@ async def rebuild_vector_index():
 
         logger.info("Starting vector index rebuild...")
 
-        # Get only bio waste documents
+        # Get only on-topic STEM documents
         analyses = await analyze_all_documents()
         clean_docs = [
             a
             for a in analyses
-            if not a.is_problematic and a.content_type == "bio_waste"
+            if not a.is_problematic and a.content_type == "stem_content"
         ]
 
         await _rebuild_clean_vector_index(repos, clean_docs)
@@ -231,71 +231,100 @@ async def rebuild_vector_index():
         raise HTTPException(status_code=500, detail=f"Rebuild failed: {str(e)}")
 
 
-@router.get("/bio-waste-documents")
-async def get_bio_waste_documents():
+@router.get("/stem-documents")
+async def get_stem_documents():
     """
-    Get only verified bio waste documents
+    Get only verified on-topic STEM documents
     """
     try:
         analyses = await analyze_all_documents()
-        bio_waste_docs = [
+        stem_docs = [
             a
             for a in analyses
-            if a.content_type == "bio_waste" and not a.is_problematic
+            if a.content_type == "stem_content" and not a.is_problematic
         ]
 
-        return {"count": len(bio_waste_docs), "documents": bio_waste_docs}
+        return {"count": len(stem_docs), "documents": stem_docs}
 
     except Exception as e:
-        logger.error(f"Failed to get bio waste documents: {e}")
+        logger.error(f"Failed to get STEM documents: {e}")
         raise HTTPException(status_code=500, detail=f"Failed: {str(e)}")
+
+
+# STEM subject vocabulary covering all four pillars, so a document mentioning
+# programming/algorithms scores as on-topic content, not as something to
+# exclude - the previous "computer_science -> exclude" rule was backwards
+# for a STEM tutor (technology is one of the four letters).
+DEFAULT_STEM_KEYWORDS = [
+    "physics",
+    "chemistry",
+    "biology",
+    "mathematics",
+    "algebra",
+    "geometry",
+    "science",
+    "experiment",
+    "engineering",
+    "technology",
+    "programming",
+    "algorithm",
+    "energy",
+    "electricity",
+    "circuit",
+    "force",
+    "gravity",
+    "molecule",
+    "cell",
+    "ecosystem",
+]
+
+# Signals of prompt-injection-style contamination in uploaded text, not
+# subject matter - these apply regardless of what the RAG system is about.
+DEFAULT_PROBLEMATIC_KEYWORDS = [
+    "zero-hallucination",
+    "ignore previous instructions",
+    "ignore all previous instructions",
+    "you are an ai language model",
+    "system prompt:",
+]
+
+DEFAULT_FILTER_CONFIG = {
+    "stem_keywords": DEFAULT_STEM_KEYWORDS,
+    "problematic_keywords": DEFAULT_PROBLEMATIC_KEYWORDS,
+    # Left empty deliberately - no genuinely off-topic content has been
+    # identified for this tutor yet. Fill in if/when it comes up.
+    "exclude_keywords": [],
+    "min_content_length": 100,
+    "max_corruption_chars": 10,
+}
+
+
+def _load_filter_config() -> Dict:
+    """Load config/document_filters.yaml, or the STEM-appropriate defaults."""
+    from pathlib import Path
+
+    import yaml
+
+    config_path = Path("config/document_filters.yaml")
+    if config_path.exists():
+        with open(config_path, "r", encoding="utf-8") as f:
+            return yaml.safe_load(f) or dict(DEFAULT_FILTER_CONFIG)
+    return dict(DEFAULT_FILTER_CONFIG)
 
 
 def _analyze_content_quality(content: str) -> tuple[bool, List[str]]:
     """Analyze if content is problematic using configured keywords"""
     content_lower = content.lower()
     reasons = []
+    config = _load_filter_config()
 
-    # Load filter configuration
-    from pathlib import Path
-
-    import yaml
-
-    config_path = Path("config/document_filters.yaml")
-
-    if config_path.exists():
-        with open(config_path, "r") as f:
-            config = yaml.safe_load(f)
-    else:
-        # Use defaults
-        config = {
-            "problematic_keywords": [
-                "zero-hallucination",
-                "guidelines for following",
-                "only use information",
-                "training instructions",
-                "quelels",
-            ],
-            "exclude_keywords": [
-                "javascript",
-                "console.log",
-                "function",
-                "cloud computing",
-                "programming",
-                "software",
-                "algorithm",
-            ],
-            "min_content_length": 100,
-            "max_corruption_chars": 10,
-        }
-
-    # Check for training instructions
+    # Prompt-injection-style contamination
     if any(
         keyword in content_lower for keyword in config.get("problematic_keywords", [])
     ):
         reasons.append("training_instructions")
 
-    # Check for excluded content
+    # Admin-configured off-topic content (empty by default - see DEFAULT_FILTER_CONFIG)
     if any(keyword in content_lower for keyword in config.get("exclude_keywords", [])):
         reasons.append("excluded_content")
 
@@ -315,55 +344,11 @@ def _analyze_content_quality(content: str) -> tuple[bool, List[str]]:
 def _classify_content_type(content: str) -> str:
     """Classify the type of content using configured keywords"""
     content_lower = content.lower()
+    config = _load_filter_config()
 
-    # Load filter configuration
-    from pathlib import Path
-
-    import yaml
-
-    config_path = Path("config/document_filters.yaml")
-
-    if config_path.exists():
-        with open(config_path, "r") as f:
-            config = yaml.safe_load(f)
-    else:
-        # Use defaults
-        config = {
-            "bio_waste_keywords": [
-                "bioabfall",
-                "bio waste",
-                "organic waste",
-                "kompost",
-                "grünabfall",
-                "küchenabfälle",
-                "obst",
-                "gemüse",
-                "fruit",
-                "vegetable",
-                "food waste",
-            ]
-        }
-
-    # Check for target content (e.g., bio waste)
-    target_keywords = config.get("bio_waste_keywords", [])
-    if any(indicator in content_lower for indicator in target_keywords):
-        return "bio_waste"
-
-    # Computer science indicators
-    cs_indicators = [
-        "javascript",
-        "programming",
-        "software",
-        "algorithm",
-        "cloud computing",
-    ]
-    if any(indicator in content_lower for indicator in cs_indicators):
-        return "computer_science"
-
-    # Training/instruction indicators
-    training_indicators = ["guidelines", "rules", "instructions", "richtlinien"]
-    if any(indicator in content_lower for indicator in training_indicators):
-        return "training_material"
+    stem_keywords = config.get("stem_keywords", DEFAULT_STEM_KEYWORDS)
+    if any(keyword in content_lower for keyword in stem_keywords):
+        return "stem_content"
 
     return "unknown"
 
@@ -371,18 +356,11 @@ def _classify_content_type(content: str) -> str:
 def _calculate_confidence(content: str) -> float:
     """Calculate confidence score for content classification"""
     content_lower = content.lower()
+    config = _load_filter_config()
 
-    # Bio waste confidence boosters
-    bio_score = 0
-    bio_keywords = [
-        "bioabfall",
-        "organic",
-        "compost",
-        "obst",
-        "gemüse",
-        "küchenabfälle",
-    ]
-    bio_score = sum(1 for keyword in bio_keywords if keyword in content_lower)
+    # STEM keyword hits
+    stem_keywords = config.get("stem_keywords", DEFAULT_STEM_KEYWORDS)
+    stem_score = sum(1 for keyword in stem_keywords if keyword in content_lower)
 
     # Length bonus
     length_bonus = min(len(content) / 1000, 1.0)
@@ -390,7 +368,7 @@ def _calculate_confidence(content: str) -> float:
     # Corruption penalty
     corruption_penalty = content.count("�") * 0.1
 
-    confidence = min((bio_score * 0.2 + length_bonus * 0.3) - corruption_penalty, 1.0)
+    confidence = min((stem_score * 0.1 + length_bonus * 0.3) - corruption_penalty, 1.0)
     return max(confidence, 0.0)
 
 
@@ -401,7 +379,7 @@ def _get_recommendation(is_problematic: bool, reasons: List[str]) -> str:
 
     if "training_instructions" in reasons:
         return "remove_immediately"
-    if "computer_science" in reasons:
+    if "excluded_content" in reasons:
         return "remove"
     if "corrupted_encoding" in reasons:
         return "fix_encoding_or_remove"
