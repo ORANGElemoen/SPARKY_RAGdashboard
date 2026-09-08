@@ -367,6 +367,7 @@ async def get_interaction_log(
     limit: int = 100,
     offset: int = 0,
     session_id: Optional[str] = None,
+    device_id: Optional[int] = None,
     sort_by: str = "timestamp",
 ):
     """List logged tutor question/answer exchanges, most recent first.
@@ -394,10 +395,14 @@ async def get_interaction_log(
         sort_by = sort_by if sort_by in ("timestamp", "session") else "timestamp"
 
         interactions = await interaction_log_repo.get_interactions(
-            limit=limit, offset=offset, session_id=session_id, sort_by=sort_by
+            limit=limit,
+            offset=offset,
+            session_id=session_id,
+            device_id=device_id,
+            sort_by=sort_by,
         )
         total_count = await interaction_log_repo.count_interactions(
-            session_id=session_id
+            session_id=session_id, device_id=device_id
         )
 
         # Resolve every chunk_id referenced on this page in one query, then
@@ -579,6 +584,109 @@ async def revoke_device(device_id: int):
         raise
     except Exception as e:
         logger.error(f"Error revoking device {device_id}: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.get("/devices/{device_id}/summary")
+async def get_device_summary(device_id: int, limit: int = 200):
+    """Breakdown of what one device's learner(s) have been asking about.
+
+    Two parts: deterministic stats computed directly from the interaction
+    log (no LLM needed), and a short AI-generated narrative covering topics
+    explored, likely struggle areas, and strong engagement - built from the
+    same local Ollama model as everything else, no cloud call.
+    """
+    try:
+        import asyncio
+
+        from ..ollama_client import OllamaClient
+        from ..repositories.factory import RepositoryFactory
+
+        rag_repo = RepositoryFactory.create_production_repository()
+        interaction_log_repo = rag_repo.interaction_log
+        device_repo = rag_repo.devices
+
+        device = await device_repo.get_by_id(device_id)
+        if not device:
+            raise HTTPException(status_code=404, detail="Device not found")
+
+        limit = max(1, min(limit, 500))
+        interactions = await interaction_log_repo.get_interactions(
+            limit=limit, device_id=device_id, sort_by="timestamp"
+        )
+
+        if not interactions:
+            return {
+                "device_id": device_id,
+                "device_name": device.name,
+                "interaction_count": 0,
+                "stats": None,
+                "summary": "No questions logged for this device yet.",
+            }
+
+        total = len(interactions)
+        grounded = sum(1 for i in interactions if not i["used_general_knowledge"])
+        good = sum(1 for i in interactions if i.get("rating") == "good")
+        bad = sum(1 for i in interactions if i.get("rating") == "bad")
+        confidences = [
+            i["confidence"] for i in interactions if i.get("confidence") is not None
+        ]
+        avg_confidence = sum(confidences) / len(confidences) if confidences else None
+
+        stats = {
+            "total_questions": total,
+            "grounded_in_documents": grounded,
+            "general_knowledge": total - grounded,
+            "thumbs_up": good,
+            "thumbs_down": bad,
+            "average_confidence": (
+                round(avg_confidence, 3) if avg_confidence is not None else None
+            ),
+        }
+
+        # get_interactions() returns most-recent-first; reverse so the
+        # transcript reads chronologically, which the model summarizes better.
+        transcript = "\n\n".join(
+            f"Q: {entry['question_text'][:200]}\nA: {entry['answer_text'][:200]}"
+            for entry in reversed(interactions)
+        )
+        if len(transcript) > 6000:
+            transcript = transcript[:6000] + "\n...[truncated]"
+
+        prompt = (
+            "Below is a log of questions a STEM learner asked a tutoring system, "
+            "with the answers given. Write a short summary for a teacher reviewing "
+            "this learner's activity. Cover: (1) the main topics/subjects explored, "
+            "(2) any signs the learner is struggling (repeated or confused-sounding "
+            "questions on the same topic), (3) topics the learner seems most engaged "
+            "with or curious about. Keep it to 4-6 sentences of plain prose, no "
+            "headers or bullet points.\n\n"
+            f"{transcript}"
+        )
+
+        llm_client = OllamaClient(timeout=60)
+        summary_text = await asyncio.to_thread(
+            llm_client.generate_answer,
+            query=prompt,
+            context="",
+            max_tokens=400,
+            temperature=0.3,
+            max_retries=1,
+            is_complete_prompt=True,
+        )
+
+        return {
+            "device_id": device_id,
+            "device_name": device.name,
+            "interaction_count": total,
+            "stats": stats,
+            "summary": summary_text
+            or "Summary could not be generated right now - try again in a moment.",
+        }
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Error generating device summary for {device_id}: {e}")
         raise HTTPException(status_code=500, detail=str(e))
 
 

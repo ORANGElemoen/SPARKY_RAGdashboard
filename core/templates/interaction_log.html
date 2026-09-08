@@ -172,6 +172,20 @@
         }
         .translate-output.status-error { color: var(--color-danger); }
 
+        .device-summary-panel {
+            border: 1px solid var(--color-accent-soft-border);
+            background: var(--color-accent-soft, var(--color-surface-alt));
+            border-radius: var(--radius-md);
+            padding: var(--space-4);
+            margin-bottom: var(--space-6);
+        }
+        .device-summary-header { display: flex; align-items: center; justify-content: space-between; gap: var(--space-3); flex-wrap: wrap; }
+        .device-summary-subtitle { margin-left: var(--space-2); font-size: var(--text-xs); color: var(--color-text-tertiary); }
+        .device-summary-stats { display: flex; flex-wrap: wrap; gap: var(--space-4); margin-top: var(--space-3); }
+        .device-summary-stat { font-size: var(--text-sm); }
+        .device-summary-stat strong { display: block; font-size: var(--text-lg); }
+        .device-summary-text { margin-top: var(--space-3); font-size: var(--text-sm); line-height: var(--leading-relaxed); white-space: pre-wrap; }
+
         .pagination { display: flex; justify-content: center; gap: var(--space-3); margin-top: var(--space-6); }
     </style>
 </head>
@@ -198,6 +212,10 @@
 
         <div class="admin-content">
             <div class="toolbar">
+                <label for="deviceFilter">Device:</label>
+                <select id="deviceFilter" class="input">
+                    <option value="">All devices</option>
+                </select>
                 <label for="sessionFilter">Chat (session) ID:</label>
                 <input type="text" id="sessionFilter" class="input" placeholder="Paste a session_id to filter to one conversation">
                 <label for="sortBy">Sort:</label>
@@ -209,6 +227,17 @@
                 <button id="clearBtn" class="btn btn-secondary">Clear filter</button>
                 <div class="spacer"></div>
                 <div class="summary" id="summary"></div>
+            </div>
+
+            <div class="device-summary-panel" id="deviceSummaryPanel" style="display:none;">
+                <div class="device-summary-header">
+                    <div>
+                        <strong id="deviceSummaryTitle"></strong>
+                        <span class="device-summary-subtitle" id="deviceSummarySubtitle"></span>
+                    </div>
+                    <button id="generateSummaryBtn" class="btn btn-primary btn-sm"><svg class="icon"><use href="#icon-globe"/></svg> <span class="generate-summary-label">Generate Summary</span></button>
+                </div>
+                <div id="deviceSummaryBody"></div>
             </div>
 
             <div id="entries"></div>
@@ -223,7 +252,100 @@
         const PAGE_SIZE = 25;
         let offset = 0;
         let sessionFilter = '';
+        let deviceFilter = '';
         let sortBy = 'timestamp';
+
+        async function loadDeviceOptions(preselectId) {
+            const select = document.getElementById('deviceFilter');
+            try {
+                const response = await fetch('/admin/devices');
+                const data = await response.json();
+                (data.devices || []).forEach((d) => {
+                    const option = document.createElement('option');
+                    option.value = d.id;
+                    option.textContent = d.name;
+                    if (preselectId && String(d.id) === String(preselectId)) {
+                        option.selected = true;
+                    }
+                    select.appendChild(option);
+                });
+            } catch (error) {
+                console.error('Failed to load devices for filter:', error);
+            }
+        }
+
+        function updateDeviceSummaryPanel() {
+            const panel = document.getElementById('deviceSummaryPanel');
+            const select = document.getElementById('deviceFilter');
+            const selectedOption = select.options[select.selectedIndex];
+            if (!deviceFilter) {
+                panel.style.display = 'none';
+                return;
+            }
+            panel.style.display = '';
+            document.getElementById('deviceSummaryTitle').textContent =
+                selectedOption ? selectedOption.textContent : `Device ${deviceFilter}`;
+            document.getElementById('deviceSummarySubtitle').textContent =
+                '— click Generate Summary for a breakdown of what this device has been asked';
+            document.getElementById('deviceSummaryBody').textContent = '';
+        }
+
+        async function generateDeviceSummary() {
+            const btn = document.getElementById('generateSummaryBtn');
+            const btnLabel = btn.querySelector('.generate-summary-label');
+            const body = document.getElementById('deviceSummaryBody');
+            if (!deviceFilter) return;
+
+            btn.disabled = true;
+            const originalLabel = btnLabel.textContent;
+            btnLabel.textContent = 'Generating...';
+            body.textContent = '';
+
+            try {
+                const response = await fetch(`/admin/devices/${deviceFilter}/summary`);
+                const data = await response.json();
+                if (!response.ok) {
+                    body.textContent = `Failed: ${data.detail || response.status}`;
+                    return;
+                }
+
+                if (!data.stats) {
+                    body.textContent = data.summary;
+                    return;
+                }
+
+                const statsRow = document.createElement('div');
+                statsRow.className = 'device-summary-stats';
+                const statEntries = [
+                    ['Questions', data.stats.total_questions],
+                    ['Grounded in docs', data.stats.grounded_in_documents],
+                    ['General knowledge', data.stats.general_knowledge],
+                    ['Thumbs up', data.stats.thumbs_up],
+                    ['Thumbs down', data.stats.thumbs_down],
+                    ['Avg. confidence', data.stats.average_confidence != null ? `${(data.stats.average_confidence * 100).toFixed(0)}%` : 'n/a'],
+                ];
+                statEntries.forEach(([label, value]) => {
+                    const stat = document.createElement('div');
+                    stat.className = 'device-summary-stat';
+                    const strong = document.createElement('strong');
+                    strong.textContent = String(value);
+                    stat.appendChild(strong);
+                    stat.appendChild(document.createTextNode(label));
+                    statsRow.appendChild(stat);
+                });
+                body.appendChild(statsRow);
+
+                const summaryText = document.createElement('div');
+                summaryText.className = 'device-summary-text';
+                summaryText.textContent = data.summary;
+                body.appendChild(summaryText);
+            } catch (error) {
+                body.textContent = `Network error: ${error.message}`;
+            } finally {
+                btn.disabled = false;
+                btnLabel.textContent = originalLabel;
+            }
+        }
 
         function escapeHtml(text) {
             const div = document.createElement('div');
@@ -458,6 +580,7 @@
                 sort_by: sortBy,
             });
             if (sessionFilter) params.set('session_id', sessionFilter);
+            if (deviceFilter) params.set('device_id', deviceFilter);
 
             try {
                 const response = await fetch(`/admin/interaction-log?${params.toString()}`);
@@ -486,15 +609,20 @@
 
         document.getElementById('applyBtn').addEventListener('click', () => {
             sessionFilter = document.getElementById('sessionFilter').value.trim();
+            deviceFilter = document.getElementById('deviceFilter').value;
             sortBy = document.getElementById('sortBy').value;
             offset = 0;
+            updateDeviceSummaryPanel();
             loadEntries();
         });
 
         document.getElementById('clearBtn').addEventListener('click', () => {
             document.getElementById('sessionFilter').value = '';
+            document.getElementById('deviceFilter').value = '';
             sessionFilter = '';
+            deviceFilter = '';
             offset = 0;
+            updateDeviceSummaryPanel();
             loadEntries();
         });
 
@@ -508,8 +636,19 @@
             loadEntries();
         });
 
-        loadEntries();
-        warmAvailableLanguages();
+        document.getElementById('generateSummaryBtn').addEventListener('click', generateDeviceSummary);
+
+        (async function init() {
+            const urlParams = new URLSearchParams(window.location.search);
+            const initialDeviceId = urlParams.get('device_id');
+            await loadDeviceOptions(initialDeviceId);
+            if (initialDeviceId) {
+                deviceFilter = initialDeviceId;
+                updateDeviceSummaryPanel();
+            }
+            loadEntries();
+            warmAvailableLanguages();
+        })();
     </script>
 </body>
 </html>

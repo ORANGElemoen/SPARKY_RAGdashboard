@@ -201,6 +201,7 @@ class InteractionLogRepository(SQLiteRepository):
         limit: int = 100,
         offset: int = 0,
         session_id: Optional[str] = None,
+        device_id: Optional[int] = None,
         sort_by: str = "timestamp",
     ) -> List[Dict[str, Any]]:
         """Return logged interactions, most recent first.
@@ -208,6 +209,11 @@ class InteractionLogRepository(SQLiteRepository):
         sort_by="session" groups rows by session_id (nulls last), most
         recent turn first within each session - useful for reviewing one
         learner's conversation as a unit rather than an interleaved feed.
+
+        device_id scopes to one physical device across all of its sessions -
+        a device can be reused by different learners/sessions over time, so
+        this is the "everything this unit has ever been asked" view, wider
+        than a single session_id.
         """
         try:
             order_clause = (
@@ -215,8 +221,15 @@ class InteractionLogRepository(SQLiteRepository):
                 if sort_by == "session"
                 else "timestamp DESC"
             )
-            where_clause = "WHERE session_id = ?" if session_id else ""
-            params: List[Any] = [session_id] if session_id else []
+            conditions = []
+            params: List[Any] = []
+            if session_id:
+                conditions.append("session_id = ?")
+                params.append(session_id)
+            if device_id is not None:
+                conditions.append("device_id = ?")
+                params.append(device_id)
+            where_clause = f"WHERE {' AND '.join(conditions)}" if conditions else ""
             params += [limit, offset]
 
             with self.get_connection() as conn:
@@ -224,7 +237,7 @@ class InteractionLogRepository(SQLiteRepository):
                     f"""
                     SELECT id, timestamp, query_type, question_text, answer_text,
                            used_general_knowledge, confidence, chunk_ids, document_ids,
-                           session_id, rating, promoted_document_id
+                           session_id, device_id, rating, promoted_document_id
                     FROM interaction_log
                     {where_clause}
                     ORDER BY {order_clause}
@@ -252,17 +265,26 @@ class InteractionLogRepository(SQLiteRepository):
             logger.error(f"Failed to load interaction log: {e}")
             return []
 
-    async def count_interactions(self, session_id: Optional[str] = None) -> int:
-        """Total number of logged interactions, optionally scoped to a session."""
+    async def count_interactions(
+        self, session_id: Optional[str] = None, device_id: Optional[int] = None
+    ) -> int:
+        """Total number of logged interactions, optionally scoped to a session and/or device."""
         try:
+            conditions = []
+            params: List[Any] = []
+            if session_id:
+                conditions.append("session_id = ?")
+                params.append(session_id)
+            if device_id is not None:
+                conditions.append("device_id = ?")
+                params.append(device_id)
+            where_clause = f"WHERE {' AND '.join(conditions)}" if conditions else ""
+
             with self.get_connection() as conn:
-                if session_id:
-                    cursor = conn.execute(
-                        "SELECT COUNT(*) FROM interaction_log WHERE session_id = ?",
-                        (session_id,),
-                    )
-                else:
-                    cursor = conn.execute("SELECT COUNT(*) FROM interaction_log")
+                cursor = conn.execute(
+                    f"SELECT COUNT(*) FROM interaction_log {where_clause}",  # nosec B608
+                    params,
+                )
                 return cursor.fetchone()[0]
         except Exception as e:
             logger.error(f"Failed to count interaction log: {e}")

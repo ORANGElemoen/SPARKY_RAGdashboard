@@ -110,6 +110,7 @@
       <symbol id="icon-key" viewBox="0 0 24 24"><circle cx="8" cy="15" r="4"/><path d="M11 12l9-9M17 3l3 3M14 6l2 2"/></symbol>
       <symbol id="icon-trash" viewBox="0 0 24 24"><path d="M4 6.5h16"/><path d="M8.5 6.5V5a1.5 1.5 0 0 1 1.5-1.5h4A1.5 1.5 0 0 1 15.5 5v1.5"/><path d="M6.5 6.5 7.3 19a1.5 1.5 0 0 0 1.5 1.4h6.4a1.5 1.5 0 0 0 1.5-1.4l.8-12.5"/></symbol>
       <symbol id="icon-check-circle" viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><polyline points="8 12.5 11 15.5 16 9"/></symbol>
+      <symbol id="icon-message" viewBox="0 0 24 24"><path d="M4 5.5A2.5 2.5 0 0 1 6.5 3h11A2.5 2.5 0 0 1 20 5.5v8a2.5 2.5 0 0 1-2.5 2.5H10l-5 4v-4H6.5A2.5 2.5 0 0 1 4 13.5v-8z"/></symbol>
     </svg>
 
     <div class="admin-container">
@@ -180,7 +181,10 @@
                         <td>${d.revoked_at ? '<span class="badge badge-danger">Revoked</span>' : '<span class="badge badge-success">Active</span>'}</td>
                         <td>${formatTimestamp(d.created_at)}</td>
                         <td>${formatTimestamp(d.last_seen_at)}</td>
-                        <td>${d.revoked_at ? '' : `<button class="btn btn-sm btn-danger" onclick="revokeDevice(${d.id}, '${escapeHtml(d.name)}')"><svg class="icon"><use href="#icon-trash"/></svg> Revoke</button>`}</td>
+                        <td>
+                            <a class="btn btn-sm" href="/admin/interaction-log/view?device_id=${d.id}&device_name=${encodeURIComponent(d.name)}"><svg class="icon"><use href="#icon-message"/></svg> Chat Log</a>
+                            ${d.revoked_at ? '' : `<button class="btn btn-sm btn-danger" onclick="revokeDevice(${d.id}, '${escapeHtml(d.name)}')"><svg class="icon"><use href="#icon-trash"/></svg> Revoke</button>`}
+                        </td>
                     </tr>
                 `).join('');
 

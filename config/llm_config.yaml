@@ -1,4 +1,4 @@
-default_model: llama3.2
+default_model: mistral
 models:
   command-r:
     context_length: 128000
