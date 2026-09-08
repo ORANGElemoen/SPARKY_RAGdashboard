@@ -70,20 +70,6 @@ class OllamaClient:
             self.client = None
             logger.debug("Using requests fallback for Ollama communication")
 
-        # Try to use LLM manager for model selection
-        try:
-            from services.llm_manager import get_llm_manager
-
-            self.llm_manager = get_llm_manager()
-
-            if model is None:
-                # Use model from config
-                model = self.llm_manager.get_current_model()
-                logger.debug(f"Using model from config: {model}")
-        except ImportError:
-            logger.debug("LLM manager not available, using auto-detection")
-            self.llm_manager = None
-
         # Load model from config if not specified
         if model is None:
             model = self._load_model_from_config()
@@ -616,153 +602,23 @@ class OllamaClient:
         logger.error(f"Failed to generate answer after {max_retries} attempts")
         return None
 
-    def generate_answer_stream(
-        self, query: str, context: str, max_tokens: int = 2048, temperature: float = 0.7
-    ):
-        """
-        Generate an answer using Ollama with streaming response
-
-        Args:
-            query: User's question
-            context: Relevant document context
-            max_tokens: Maximum tokens to generate
-            temperature: Generation temperature (0.0-1.0)
-
-        Yields:
-            str: Streaming response chunks
-        """
-        if not self.is_available():
-            logger.warning("Ollama not available for answer generation")
-            return
-
-        # Prepare the prompt
-        prompt = self._create_rag_prompt(query, context)
-
-        # Validate inputs
-        if not prompt or not prompt.strip():
-            logger.error("Invalid prompt for answer generation")
-            return
-
-        if len(prompt) > 32000:  # Reasonable limit for prompt length
-            logger.warning(f"Prompt too long ({len(prompt)} chars), truncating")
-            prompt = prompt[:32000] + "..."
-
-        try:
-            logger.info(f"Generating streaming answer for query: '{query[:50]}...'")
-
-            payload = {
-                "model": self.model,
-                "prompt": prompt,
-                "options": {
-                    "num_predict": max_tokens,
-                    "temperature": temperature,
-                    "top_p": 0.9,
-                    "stop": ["\n\nHuman:", "\n\nQuestion:", "\n\nUser:"],
-                },
-                "stream": True,
-            }
-
-            response = requests.post(
-                f"{self.base_url}/api/generate",
-                json=payload,
-                timeout=self.timeout,
-                stream=True,
-            )
-
-            if response.status_code == 200:
-                for line in response.iter_lines():
-                    if line:
-                        try:
-                            chunk = json.loads(line.decode("utf-8"))
-                            if "response" in chunk:
-                                yield chunk["response"]
-                            if chunk.get("done", False):
-                                break
-                        except json.JSONDecodeError:
-                            continue
-            else:
-                logger.error(f"Streaming request failed: {response.status_code}")
-
-        except Exception as e:
-            logger.error(f"Error in streaming generation: {e}")
-
     def _create_rag_prompt(self, query: str, context: str) -> str:
         """
-        Create a structured German RAG prompt using LLM manager
+        Create a simple RAG prompt for callers that pass a raw query/context
+        pair instead of a fully-built prompt (is_complete_prompt=False).
 
-        Args:
-            query: User's question
-            context: Document context
-
-        Returns:
-            str: Formatted prompt
+        SimpleRAGService (the tutor's real answer path) always builds its own
+        language-aware prompt from config/languages/*.yaml and calls
+        generate_answer(..., is_complete_prompt=True), so this is only a
+        fallback for other/future callers of generate_answer.
         """
-        # Use LLM manager for prompt if available
-        if hasattr(self, "llm_manager") and self.llm_manager:
-            try:
-                prompt = self.llm_manager.get_prompt_template(query, context)
-                logger.debug(f"Using LLM manager prompt for model: {self.model}")
-                return prompt
-            except Exception as e:
-                logger.warning(f"Failed to get prompt from LLM manager: {e}")
-
-        # Fallback to model-specific prompts
-        model_name = self.model.lower()
-
-        if "command-r" in model_name:
-            # Optimized for Command-R models
-            prompt = f"""<|START_OF_TURN_TOKEN|><|SYSTEM_TOKEN|>Du bist ein hilfreicher Assistent, der Fragen NUR basierend auf bereitgestellten Dokumenten beantwortet.<|END_OF_TURN_TOKEN|>
-<|START_OF_TURN_TOKEN|><|USER_TOKEN|>
-Dokumente:
-{context}
-
-Frage: {query}<|END_OF_TURN_TOKEN|>
-<|START_OF_TURN_TOKEN|><|ASSISTANT_TOKEN|>Basierend auf den bereitgestellten Dokumenten:"""
-
-        elif "solar" in model_name:
-            # Optimized for Solar models
-            prompt = f"""### System:
-Du bist ein Experte im Analysieren von Dokumenten. Beantworte Fragen NUR mit Informationen aus den gegebenen Dokumenten.
-
-### Dokumente:
-{context}
-
-### Benutzer:
-{query}
-
-### Assistent:
-Nach Analyse der Dokumente:"""
-
-        else:
-            # Simple, clear prompt that works well with smaller models
-            prompt = f"""Based on the following documents:
+        return f"""Based on the following documents:
 
 {context}
 
 Question: {query}
 
 Answer:"""
-
-        return prompt
-
-    def switch_model(self, model_key: str) -> bool:
-        """
-        Switch to a different model using LLM manager
-
-        Args:
-            model_key: Model key from configuration
-
-        Returns:
-            bool: True if successful
-        """
-        if hasattr(self, "llm_manager") and self.llm_manager:
-            if self.llm_manager.set_model(model_key):
-                self.model = self.llm_manager.get_current_model()
-                logger.info(f"Switched to model: {self.model}")
-                # Reset availability check
-                self.available = None
-                return True
-        return False
 
     def chat_completion(
         self,

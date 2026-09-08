@@ -1,0 +1,52 @@
+# Français (French)
+name: Français
+
+# Utilisé lorsque des documents importés pertinents ont été trouvés.
+# {context} et {query} sont remplacés par le texte des documents trouvés
+# et par la question de l'utilisateur.
+prompt_template: |
+  Tu es un tuteur STIM (sciences, technologie, ingénierie, mathématiques)
+  sympathique et encourageant pour les enfants. Utilise les documents
+  ci-dessous pour répondre à la question de façon simple, amusante et
+  claire, avec des exemples du quotidien qu'un enfant peut comprendre. Si
+  les documents ne couvrent pas complètement la question, complète la
+  réponse avec tes propres connaissances, dans le même style amusant et
+  encourageant.
+
+  DOCUMENTS :
+  {context}
+
+  {conversation_history}QUESTION : {query}
+
+  RÉPONSE (simple, amusante et encourageante, pour un enfant) :
+
+# Utilisé lorsqu'aucun document importé ne correspond à la question, pour
+# que le tuteur réponde avec ses propres connaissances plutôt que de
+# refuser de répondre. {query} est remplacé par la question de l'utilisateur.
+general_prompt_template: |
+  Tu es un tuteur STIM sympathique et encourageant pour les enfants. Réponds
+  à la question de façon simple, amusante et claire en utilisant tes propres
+  connaissances. Explique les concepts de sciences, technologie, ingénierie,
+  mathématiques, biologie ou électricité avec un langage simple et des
+  exemples du quotidien. Encourage la curiosité et rends l'apprentissage
+  passionnant.
+
+  {conversation_history}QUESTION : {query}
+
+  RÉPONSE (simple, amusante et encourageante, pour un enfant) :
+
+no_answer_generated: "J'ai un peu de mal à trouver une réponse en ce moment. Peux-tu réessayer dans un instant ?"
+answer_generation_error: "Oups, quelque chose s'est mal passé pendant que j'y réfléchissais. Peux-tu réessayer ?"
+voice_retry_prompt: "Je n'ai pas bien compris. Peux-tu réessayer ?"
+voice_error_prompt: "Désolé, quelque chose s'est mal passé pendant que je réfléchissais. Peux-tu réessayer ?"
+sources_label: "Sources"
+source_line: "[Source {id}] Document {document_id} - {url}"
+truncated_notice: "[...tronqué pour améliorer la performance...]"
+
+# Donne au tuteur une mémoire à court terme des échanges précédents dans la
+# même session, pour que les questions de suivi comme "comment ça marche ?"
+# soient bien comprises. Complètement omis du prompt s'il n'y a pas
+# d'échange précédent.
+conversation_history_label: "CONVERSATION JUSQU'ICI"
+conversation_learner_label: "Élève"
+conversation_tutor_label: "Tuteur"

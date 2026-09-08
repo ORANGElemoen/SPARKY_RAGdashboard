@@ -32,8 +32,8 @@ general_prompt_template: |
 
   ANTWORT (einfach, spannend und motivierend, für ein Kind):
 
-no_answer_generated: "Keine Antwort generiert."
-answer_generation_error: "Fehler bei der Antwortgenerierung."
+no_answer_generated: "Ich habe gerade etwas Mühe, eine Antwort zu finden. Kannst du es gleich nochmal versuchen?"
+answer_generation_error: "Hoppla, da ist etwas schiefgelaufen, während ich nachgedacht habe. Kannst du es nochmal versuchen?"
 voice_retry_prompt: "Das habe ich nicht ganz verstanden. Kannst du das nochmal fragen?"
 voice_error_prompt: "Entschuldigung, da ist etwas schiefgelaufen. Kannst du es nochmal versuchen?"
 sources_label: "Quellen"

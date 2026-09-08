@@ -32,8 +32,8 @@ general_prompt_template: |
 
   ANSWER (simple, fun, and encouraging, for a child):
 
-no_answer_generated: "No answer could be generated."
-answer_generation_error: "An error occurred while generating the answer."
+no_answer_generated: "I'm having a little trouble coming up with an answer right now. Can you try asking again in a moment?"
+answer_generation_error: "Oops, something went wrong while I was thinking about that. Can you try asking again?"
 voice_retry_prompt: "I didn't quite catch that. Can you try asking again?"
 voice_error_prompt: "Sorry, something went wrong while I was thinking. Can you try again?"
 sources_label: "Sources"

@@ -385,8 +385,9 @@ class SimpleRAGService:
             answer_text = _trim_to_complete_sentence(answer_text)
             spoken_text = answer_text  # Citations below are for display, not speech
 
-            # Add source footer
-            if sources and self.config.require_sources:
+            # Add source footer - only when an answer was actually generated,
+            # otherwise this would cite sources for an answer that doesn't exist
+            if response and sources and self.config.require_sources:
                 source_footer = f"\n\n{strings['sources_label']}:\n" + "\n".join(
                     [
                         strings["source_line"].format(
@@ -411,8 +412,12 @@ class SimpleRAGService:
                 "debug_prompt": prompt[:500] + "..." if len(prompt) > 500 else prompt,
             }
 
-            # Cache the result for future queries
-            self.cache.set(query, context, result, extra=history_block)
+            # Cache the result for future queries - but only a real answer.
+            # Caching a "no answer" fallback would keep serving it to every
+            # future learner who hits the same query/context for up to the
+            # cache's TTL, even after the LLM recovers from a transient failure.
+            if response:
+                self.cache.set(query, context, result, extra=history_block)
 
             return result
 
