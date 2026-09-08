@@ -3,9 +3,12 @@ Simple Query Router
 Single AI-only endpoint for RAG queries
 """
 
+import asyncio
 import logging
+from pathlib import Path
 from typing import Any, Dict, Optional
 
+import yaml
 from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel, Field
 
@@ -36,6 +39,18 @@ class QueryResponse(BaseModel):
         default=False,
         description="True if no relevant document chunk was found and the tutor fell back to general knowledge",
     )
+
+
+class TranslateRequest(BaseModel):
+    text: str = Field(..., min_length=1, max_length=4000)
+    target_language: str = Field(
+        ..., description="Language code matching a file in config/languages/, e.g. 'fr'"
+    )
+
+
+class TranslateResponse(BaseModel):
+    translated_text: str
+    target_language: str
 
 
 class StatusResponse(BaseModel):
@@ -107,6 +122,61 @@ async def query_documents(
     except Exception as e:
         logger.error(f"Query processing failed: {e}")
         raise HTTPException(status_code=500, detail="Query processing failed")
+
+
+@router.post("/translate", response_model=TranslateResponse)
+async def translate_text(request: TranslateRequest):
+    """Translate a tutor answer or logged question into another configured
+    language, so answer quality can be checked outside English/German too.
+
+    Uses the same local Ollama model as everything else - no cloud
+    translation API, consistent with the project's offline-first design.
+    """
+    lang_file = Path(f"config/languages/{request.target_language}.yaml")
+    if not lang_file.exists():
+        raise HTTPException(
+            status_code=400,
+            detail=f"Unknown language '{request.target_language}' "
+            f"(no config/languages/{request.target_language}.yaml)",
+        )
+
+    try:
+        with open(lang_file, "r", encoding="utf-8") as f:
+            lang_name = (yaml.safe_load(f) or {}).get("name", request.target_language)
+
+        prompt = (
+            f"Translate the following text into {lang_name}. Output only the "
+            f"translation, with no extra commentary, notes, or quotation marks "
+            f"around it.\n\n{request.text}"
+        )
+
+        from ..ollama_client import OllamaClient
+
+        llm_client = OllamaClient(timeout=60)
+        translated = await asyncio.to_thread(
+            llm_client.generate_answer,
+            query=prompt,
+            context="",
+            max_tokens=800,
+            temperature=0.2,
+            max_retries=1,
+            is_complete_prompt=True,
+        )
+
+        if not translated:
+            raise HTTPException(
+                status_code=502,
+                detail="Translation failed - the AI model didn't return a result",
+            )
+
+        return TranslateResponse(
+            translated_text=translated.strip(), target_language=request.target_language
+        )
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Translation failed: {e}")
+        raise HTTPException(status_code=500, detail="Translation failed")
 
 
 @router.get("/status", response_model=StatusResponse)

@@ -402,6 +402,26 @@
             font-size: var(--text-sm);
             color: var(--color-text-secondary);
         }
+        .translate-control {
+            margin-top: var(--space-3);
+            padding-top: var(--space-3);
+            border-top: 1px solid var(--color-border);
+            display: flex;
+            flex-wrap: wrap;
+            align-items: center;
+            gap: var(--space-2);
+        }
+        .translate-control select { width: auto; padding: 6px 10px; font-size: var(--text-sm); }
+        .translate-output {
+            flex-basis: 100%;
+            margin-top: var(--space-2);
+            padding: var(--space-3);
+            background: var(--color-surface-alt);
+            border-radius: var(--radius-md);
+            font-size: var(--text-sm);
+            white-space: pre-wrap;
+        }
+        .translate-output strong { color: var(--color-text-secondary); }
         .source-card {
             border-left: 2px solid var(--color-accent-soft-border);
             background: var(--color-surface-alt);
@@ -563,6 +583,7 @@
                         </div>
                     </div>
                     <div id="voiceSourcesBox"></div>
+                    <div id="voiceTranslateBox"></div>
                     <audio id="voiceAudioPlayer" controls></audio>
                 </div>
             </div>
@@ -717,6 +738,82 @@
             panel.classList.toggle('open', !expanded);
         }
 
+        // "Translate this answer" control, used by both Text Chat and Voice Chat
+        // so an answer's quality can be checked in a language the reader is
+        // more fluent in. Runs through the same local Ollama model as
+        // everything else - no cloud translation API. Options are filled from
+        // a language list warmed on page load (see bottom of this script);
+        // the button reads the answer text fresh from the DOM at click time
+        // via sourceElementId, so it always translates whatever is on screen.
+        let _availableLanguages = [];
+        async function warmAvailableLanguages() {
+            try {
+                const response = await fetch(`${API_BASE}/admin/settings/language`);
+                const data = await response.json();
+                _availableLanguages = data.available_languages || [];
+            } catch (error) {
+                _availableLanguages = [{ code: 'en', name: 'English' }];
+            }
+        }
+
+        function renderTranslateControl(sourceElementId) {
+            const options = (_availableLanguages.length ? _availableLanguages : [{ code: 'en', name: 'English' }])
+                .map((l) => `<option value="${escapeHtml(l.code)}">${escapeHtml(l.name)}</option>`)
+                .join('');
+            return `<div class="translate-control">
+                <select class="translate-lang-select input" aria-label="Translate to">${options}</select>
+                <button type="button" class="btn btn-sm" onclick="doTranslate(this, '${sourceElementId}')"><svg class="icon"><use href="#icon-globe"/></svg> <span class="translate-btn-label">Translate</span></button>
+                <div class="translate-result"></div>
+            </div>`;
+        }
+
+        async function doTranslate(btn, sourceElementId) {
+            const sourceEl = document.getElementById(sourceElementId);
+            const text = sourceEl ? sourceEl.textContent.trim() : '';
+            if (!text) return;
+
+            const control = btn.closest('.translate-control');
+            const select = control.querySelector('.translate-lang-select');
+            const btnLabel = control.querySelector('.translate-btn-label');
+            const resultDiv = control.querySelector('.translate-result');
+            const targetLang = select.value;
+            const langName = select.options[select.selectedIndex] ? select.options[select.selectedIndex].textContent : targetLang;
+
+            const originalLabel = btnLabel.textContent;
+            btn.disabled = true;
+            btnLabel.textContent = 'Translating...';
+            resultDiv.textContent = '';
+            try {
+                const csrfToken = await getCsrfToken();
+                const response = await fetch(`${API_BASE}/api/v1/translate`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json', 'X-CSRF-Token': csrfToken },
+                    body: JSON.stringify({ text, target_language: targetLang }),
+                });
+                const data = await response.json();
+                const output = document.createElement('div');
+                output.className = 'translate-output';
+                if (!response.ok) {
+                    output.classList.add('status-error');
+                    output.textContent = data.detail || 'Translation failed';
+                } else {
+                    const label = document.createElement('strong');
+                    label.textContent = `${langName}: `;
+                    output.appendChild(label);
+                    output.appendChild(document.createTextNode(data.translated_text));
+                }
+                resultDiv.appendChild(output);
+            } catch (error) {
+                const output = document.createElement('div');
+                output.className = 'translate-output status-error';
+                output.textContent = `Network error: ${error.message}`;
+                resultDiv.appendChild(output);
+            } finally {
+                btn.disabled = false;
+                btnLabel.textContent = originalLabel;
+            }
+        }
+
         async function getCsrfToken() {
             const response = await fetch(`${API_BASE}/api/v1/csrf-token`);
             const data = await response.json();
@@ -773,6 +870,7 @@
             const transcriptBox = document.getElementById('voiceTranscriptBox');
             const answerBox = document.getElementById('voiceAnswerBox');
             const sourcesBox = document.getElementById('voiceSourcesBox');
+            const translateBox = document.getElementById('voiceTranslateBox');
             const audioPlayer = document.getElementById('voiceAudioPlayer');
 
             try {
@@ -794,12 +892,14 @@
                 if (!response.ok) {
                     answerBox.innerHTML = `<div class="status-indicator status-error"><svg class="icon"><use href="#icon-x-circle"/></svg> ${result.detail || `Request failed (status ${response.status})`}</div>`;
                     sourcesBox.innerHTML = '';
+                    translateBox.innerHTML = '';
                     return;
                 }
 
                 transcriptBox.textContent = result.transcript || '(nothing heard)';
                 answerBox.textContent = result.answer_text;
                 sourcesBox.innerHTML = renderSourcesToggle(result.sources, result.used_general_knowledge);
+                translateBox.innerHTML = result.answer_text ? renderTranslateControl('voiceAnswerBox') : '';
 
                 audioPlayer.src = `data:audio/wav;base64,${result.audio_base64}`;
                 try {
@@ -812,6 +912,7 @@
             } catch (error) {
                 answerBox.innerHTML = `<div class="status-indicator status-error"><svg class="icon"><use href="#icon-x-circle"/></svg> Network or processing error: ${error.message}</div>`;
                 sourcesBox.innerHTML = '';
+                translateBox.innerHTML = '';
                 voiceStatusLine.textContent = 'Press and hold the button, ask a question, then release';
             } finally {
                 recordBtn.disabled = false;
@@ -992,8 +1093,9 @@
                         <span class="result-title"><svg class="icon"><use href="#icon-sparkle"/></svg> Tutor's Answer</span>
                         <span class="result-score">Confidence: ${((result.confidence || 0) * 100).toFixed(1)}%</span>
                     </div>
-                    <div class="result-content" style="white-space: pre-wrap;">${result.answer}</div>
+                    <div class="result-content" id="textAnswerContent" style="white-space: pre-wrap;">${result.answer}</div>
                     ${renderSourcesToggle(result.sources, result.used_general_knowledge)}
+                    ${renderTranslateControl('textAnswerContent')}
                 </div>`;
 
                 resultsDiv.innerHTML = html;
@@ -1048,6 +1150,7 @@
 
         // Initialize LLM status
         loadLLMStatus();
+        warmAvailableLanguages();
     </script>
 </body>
 </html>

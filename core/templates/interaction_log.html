@@ -159,6 +159,19 @@
         .empty-state, .error-state { text-align: center; padding: var(--space-10); color: var(--color-text-tertiary); }
         .error-state { color: var(--color-danger); }
 
+        .translate-control { display: flex; flex-wrap: wrap; align-items: center; gap: var(--space-2); margin-top: var(--space-2); margin-bottom: var(--space-1); }
+        .translate-control select { width: auto; padding: 4px 8px; font-size: var(--text-xs); }
+        .translate-output {
+            flex-basis: 100%;
+            margin-top: var(--space-1);
+            padding: var(--space-2) var(--space-3);
+            background: var(--color-surface-alt);
+            border-radius: var(--radius-sm);
+            font-size: var(--text-xs);
+            white-space: pre-wrap;
+        }
+        .translate-output.status-error { color: var(--color-danger); }
+
         .pagination { display: flex; justify-content: center; gap: var(--space-3); margin-top: var(--space-6); }
     </style>
 </head>
@@ -222,6 +235,78 @@
             const response = await fetch('/api/v1/csrf-token');
             const data = await response.json();
             return data.csrf_token;
+        }
+
+        // "Translate" control for reviewing a logged question/answer in
+        // another configured language. Same local-Ollama approach as the
+        // main UI's translate button (see static/index.html).
+        let _availableLanguages = [];
+        async function warmAvailableLanguages() {
+            try {
+                const response = await fetch('/admin/settings/language');
+                const data = await response.json();
+                _availableLanguages = data.available_languages || [];
+            } catch (error) {
+                _availableLanguages = [{ code: 'en', name: 'English' }];
+            }
+        }
+
+        function renderTranslateControl(sourceElementId) {
+            const options = (_availableLanguages.length ? _availableLanguages : [{ code: 'en', name: 'English' }])
+                .map((l) => `<option value="${escapeHtml(l.code)}">${escapeHtml(l.name)}</option>`)
+                .join('');
+            return `<div class="translate-control">
+                <select class="translate-lang-select input" aria-label="Translate to">${options}</select>
+                <button type="button" class="btn btn-sm" onclick="doTranslate(this, '${sourceElementId}')"><svg class="icon"><use href="#icon-globe"/></svg> <span class="translate-btn-label">Translate</span></button>
+                <div class="translate-result"></div>
+            </div>`;
+        }
+
+        async function doTranslate(btn, sourceElementId) {
+            const sourceEl = document.getElementById(sourceElementId);
+            const text = sourceEl ? sourceEl.textContent.trim() : '';
+            if (!text) return;
+
+            const control = btn.closest('.translate-control');
+            const select = control.querySelector('.translate-lang-select');
+            const btnLabel = control.querySelector('.translate-btn-label');
+            const resultDiv = control.querySelector('.translate-result');
+            const targetLang = select.value;
+            const langName = select.options[select.selectedIndex] ? select.options[select.selectedIndex].textContent : targetLang;
+
+            const originalLabel = btnLabel.textContent;
+            btn.disabled = true;
+            btnLabel.textContent = 'Translating...';
+            resultDiv.textContent = '';
+            try {
+                const csrfToken = await getCsrfToken();
+                const response = await fetch('/api/v1/translate', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json', 'X-CSRF-Token': csrfToken },
+                    body: JSON.stringify({ text, target_language: targetLang }),
+                });
+                const data = await response.json();
+                const output = document.createElement('div');
+                output.className = 'translate-output';
+                if (!response.ok) {
+                    output.classList.add('status-error');
+                    output.textContent = data.detail || 'Translation failed';
+                } else {
+                    const label = document.createElement('strong');
+                    label.textContent = `${langName}: `;
+                    output.appendChild(label);
+                    output.appendChild(document.createTextNode(data.translated_text));
+                }
+                resultDiv.appendChild(output);
+            } catch (error) {
+                const output = document.createElement('div');
+                output.className = 'translate-output status-error';
+                output.textContent = `Network error: ${error.message}`;
+                resultDiv.appendChild(output);
+            } finally {
+                btn.disabled = false;
+                btnLabel.textContent = originalLabel;
+            }
         }
 
         async function setRating(interactionId, rating, statusEl) {
@@ -290,10 +375,12 @@
                 </div>
                 <div class="entry-body"><div><div class="entry-body-inner">
                     <div class="section-label">Question (as understood by the model)</div>
-                    <div class="question-text">${escapeHtml(entry.question_text)}</div>
+                    <div class="question-text" id="q-text-${entry.id}">${escapeHtml(entry.question_text)}</div>
+                    ${renderTranslateControl('q-text-' + entry.id)}
 
                     <div class="section-label">Answer</div>
-                    <div class="answer-text">${escapeHtml(entry.answer_text)}</div>
+                    <div class="answer-text" id="a-text-${entry.id}">${escapeHtml(entry.answer_text)}</div>
+                    ${renderTranslateControl('a-text-' + entry.id)}
 
                     <div class="section-label">Sources used (${(entry.sources || []).length})</div>
                     ${renderSources(entry.sources)}
@@ -422,6 +509,7 @@
         });
 
         loadEntries();
+        warmAvailableLanguages();
     </script>
 </body>
 </html>
