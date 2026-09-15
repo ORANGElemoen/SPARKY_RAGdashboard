@@ -68,6 +68,9 @@ logs/
 
 # Claude AI
 .claude/
+.agents/
+.impeccable/
+skills-lock.json
 
 # Model files (AI/ML model files, not API models)
 /models/
