@@ -1,36 +1,45 @@
 # API Documentation
 
-Complete API reference for the Open Source RAG System.
+API reference for the STEM Voice Tutor backend (see [CLAUDE.md](../CLAUDE.md) and
+[PROJECT_HANDOFF.md](PROJECT_HANDOFF.md) for the fuller project context).
 
 ## Base URL
 
 ```
-http://localhost:8001
+http://127.0.0.1:8001
 ```
+
+When a physical device (ESP32) is involved, use the host machine's LAN IP instead
+of `127.0.0.1` so the device can actually reach it over WiFi.
 
 ## Authentication
 
-Currently, the API does not require authentication for development. For production use, implement API key authentication.
+Two different trust models, depending on the caller:
+
+- **Browser clients** (the web UI): no API key. State-changing requests
+  (POST/PUT/DELETE to `/api/v1/*` or `/admin/*`) require a CSRF token instead -
+  fetch one from `GET /api/v1/csrf-token` and send it back as an `X-CSRF-Token`
+  header. The web UI does this automatically.
+- **Physical devices**: register a device in `/admin/devices` to get a one-time
+  API key (shown once, never recoverable after). Send it as an `X-Device-Key`
+  header on every request. A valid device key bypasses the CSRF check (a device
+  can't do a browser session handshake); an invalid one is rejected with `401`.
+  Only a SHA-256 hash of the key is ever stored server-side.
 
 ## Content Types
 
-All requests and responses use `application/json` unless specified otherwise.
-
-## Rate Limiting
-
-- **Queries**: 60 per minute
-- **Uploads**: 10 per minute  
-- **Deletions**: 5 per minute
+JSON for most endpoints; `multipart/form-data` for file/audio uploads.
 
 ## Error Handling
 
-All endpoints return standard HTTP status codes:
+Standard HTTP status codes:
 
 - `200` - Success
 - `400` - Bad Request (validation error)
+- `401` - Invalid or missing device key (device-authenticated endpoints)
+- `403` - Missing/invalid CSRF token (browser-authenticated state changes)
 - `404` - Not Found
 - `422` - Unprocessable Entity (Pydantic validation error)
-- `429` - Too Many Requests (rate limited)
 - `500` - Internal Server Error
 
 Error response format:
@@ -40,635 +49,97 @@ Error response format:
 }
 ```
 
----
+## Core Endpoints
 
-## Document Management
+### `POST /api/v1/query` - Ask a text question
 
-### Upload Document
-
-Upload and process a document for indexing.
-
-**Endpoint:** `POST /api/v1/documents`
-
-**Content-Type:** `multipart/form-data`
-
-**Parameters:**
-- `file` (required): Document file (PDF, DOCX, TXT, MD)
-
-**Example:**
-```bash
-curl -X POST "http://localhost:8001/api/v1/documents" \
-  -F "file=@document.pdf"
-```
-
-**Response:**
 ```json
 {
-  "id": 1,
-  "filename": "document.pdf",
-  "size": 1048576,
-  "content_type": "application/pdf",
-  "status": "processed"
+  "query": "What is gravity?",
+  "session_id": "optional-session-id-for-conversation-memory"
 }
 ```
 
-**Status Codes:**
-- `200` - Document uploaded and processed successfully
-- `400` - Invalid file type or file too large
-- `422` - File processing failed
-
----
-
-### List Documents
-
-Get all uploaded documents.
-
-**Endpoint:** `GET /api/v1/documents`
-
-**Example:**
-```bash
-curl "http://localhost:8001/api/v1/documents"
-```
-
-**Response:**
-```json
-[
-  {
-    "id": 1,
-    "filename": "document.pdf",
-    "size": 1048576,
-    "content_type": "application/pdf",
-    "status": "processed",
-    "chunks_count": 25,
-    "upload_date": "2024-01-15T10:30:00Z"
-  }
-]
-```
-
----
-
-### Delete Document
-
-Remove a document and its associated chunks.
-
-**Endpoint:** `DELETE /api/v1/documents/{document_id}`
-
-**Parameters:**
-- `document_id` (path): Document ID to delete
-
-**Example:**
-```bash
-curl -X DELETE "http://localhost:8001/api/v1/documents/1"
-```
-
-**Response:**
+Response:
 ```json
 {
-  "message": "Document deleted successfully",
-  "chunks_removed": 25
-}
-```
-
-**Status Codes:**
-- `200` - Document deleted successfully
-- `404` - Document not found
-
----
-
-## Query Endpoints
-
-### Vector Search Query
-
-Perform semantic search against uploaded documents using vector similarity.
-
-**Endpoint:** `POST /api/v1/query`
-
-**Request Body:**
-```json
-{
-  "query": "What is the main topic discussed?",
-  "top_k": 5
-}
-```
-
-**Parameters:**
-- `query` (required): Search query string
-- `top_k` (optional): Number of results to return (default: 5)
-
-**Example:**
-```bash
-curl -X POST "http://localhost:8001/api/v1/query" \
-  -H "Content-Type: application/json" \
-  -d '{
-    "query": "What is machine learning?",
-    "top_k": 3
-  }'
-```
-
-**Response:**
-```json
-{
-  "query": "What is machine learning?",
-  "results": [
-    {
-      "document_id": 1,
-      "source_document": "ml_guide.pdf",
-      "content": "Machine learning is a subset of artificial intelligence...",
-      "score": 0.95,
-      "metadata": {
-        "chunk_id": 12,
-        "similarity_score": 0.95
-      }
-    }
-  ],
-  "total_results": 3
-}
-```
-
----
-
-### Enhanced Query (LLM-Powered)
-
-Get AI-generated answers with source attribution using LLM integration.
-
-**Endpoint:** `POST /api/v1/query/enhanced`
-
-**Request Body:**
-```json
-{
-  "query": "Explain machine learning in simple terms",
-  "top_k": 5,
-  "use_llm": true
-}
-```
-
-**Parameters:**
-- `query` (required): Question to answer
-- `top_k` (optional): Number of source chunks to consider (default: 5)
-- `use_llm` (optional): Whether to use LLM generation (default: true)
-
-**Example:**
-```bash
-curl -X POST "http://localhost:8001/api/v1/query/enhanced" \
-  -H "Content-Type: application/json" \
-  -d '{
-    "query": "What are the benefits of renewable energy?",
-    "top_k": 3,
-    "use_llm": true
-  }'
-```
-
-**Response:**
-```json
-{
-  "query": "What are the benefits of renewable energy?",
-  "answer": "Renewable energy offers several key benefits including reduced carbon emissions, energy independence, and long-term cost savings. These sources are sustainable and help combat climate change.",
-  "method": "llm_generated",
+  "answer": "Gravity is the force that pulls objects toward each other...",
   "sources": [
-    {
-      "source_document": "energy_report.pdf",
-      "content": "Renewable energy sources like solar and wind...",
-      "similarity_score": 0.92
-    }
-  ],
-  "total_sources": 3,
-  "processing_time": 4.2
-}
-```
-
-**Method Types:**
-- `llm_generated` - Answer generated by LLM using context
-- `vector_search` - LLM failed, using vector search results
-- `no_documents` - No documents available
-- `no_results` - No relevant documents found
-
----
-
-### Optimized Query (Fast Response)
-
-Get fast, optimized responses with shorter timeouts and better formatting.
-
-**Endpoint:** `POST /api/v1/query/optimized`
-
-**Request Body:**
-```json
-{
-  "query": "How does photosynthesis work?",
-  "context_limit": 3,
-  "max_tokens": 200
-}
-```
-
-**Parameters:**
-- `query` (required): Question to answer
-- `context_limit` (optional): Max context chunks to use (default: 3)
-- `max_tokens` (optional): Max response length (default: 200)
-
-**Example:**
-```bash
-curl -X POST "http://localhost:8001/api/v1/query/optimized" \
-  -H "Content-Type: application/json" \
-  -d '{
-    "query": "Was gehört in die Bio Tonne?",
-    "context_limit": 3
-  }'
-```
-
-**Response:**
-```json
-{
-  "response": "In die Biotonne gehören Küchenabfälle, Obst- und Gemüsereste sowie Gartenabfälle.\n\nQuelle: Abfallwirtschaft_Guide.pdf",
-  "query": "Was gehört in die Bio Tonne?",
-  "context": [
-    {
-      "source_document": "Abfallwirtschaft_Guide.pdf",
-      "content": "In die Biotonne gehören alle organischen Abfälle...",
-      "similarity_score": 0.94
-    }
+    {"document": "Physics_Grade8.pdf", "chunk_text": "...", "similarity": 0.87}
   ],
   "confidence": 0.87,
-  "processing_time": 2.3
+  "used_general_knowledge": false,
+  "timestamp": "2026-09-23T10:00:00",
+  "query": "What is gravity?"
 }
 ```
 
-**Features:**
-- **Fast Timeouts**: 5-10 second response times
-- **Smart Fallback**: Automatic fallback with intelligent text extraction
-- **Source Integration**: Sources embedded in response
-- **Optimized for Widgets**: Perfect for chat interfaces
+`used_general_knowledge` is `true` when no relevant document chunk was found and
+the tutor fell back to its own knowledge instead of refusing to answer - this is
+a deliberate design choice for a kids' tutor, not a bug.
 
----
+### `POST /api/v1/voice/query` - Ask a spoken question
 
-### Chat Endpoint
+Multipart form fields: `audio` (file, required), `session_id` (optional).
 
-Conversational interface with chat history support.
-
-**Endpoint:** `POST /api/chat`
-
-**Request Body:**
+Default response (browser clients):
 ```json
 {
-  "query": "Tell me about solar panels",
-  "chat_history": [
-    {
-      "query": "What is renewable energy?",
-      "response": "Renewable energy comes from sources that naturally replenish..."
-    }
-  ],
-  "max_tokens": 500
+  "transcript": "what is gravity",
+  "answer_text": "Gravity is the force that...",
+  "audio_base64": "<base64-encoded WAV>",
+  "sources": [...],
+  "used_general_knowledge": false
 }
 ```
 
-**Parameters:**
-- `query` (required): Current question
-- `chat_history` (optional): Previous conversation context
-- `max_tokens` (optional): Maximum response length (default: 1000)
-- `temperature` (optional): Response creativity (0.0-1.0, default: 0.7)
-- `context_limit` (optional): Number of document chunks to use (default: 5)
+Send `Accept: application/x-tutor-voice` to instead receive a compact
+length-prefixed binary framing intended for embedded/hardware clients - see
+[PROTOCOL.md](PROTOCOL.md) for the full wire format.
 
-**Response:**
+### `POST /api/v1/documents` - Upload a document
+
+Multipart form field: `file` (PDF, DOCX, TXT, MD, or CSV).
+
+### `GET /api/v1/documents/{id}/chunks` - Paginated chunk viewer
+
+Query params: `page`, `page_size`.
+
+### `POST /api/v1/translate` - Translate an answer
+
 ```json
 {
-  "response": "Solar panels, also known as photovoltaic panels, convert sunlight directly into electricity...",
-  "context": [
-    {
-      "source_document": "solar_guide.pdf",
-      "content": "Solar panels work by converting photons...",
-      "similarity_score": 0.89
-    }
-  ],
-  "confidence": 0.91,
-  "processing_time": 3.1
+  "text": "Gravity is the force that pulls objects together.",
+  "target_language": "fr"
 }
 ```
 
----
-
-### Streaming Query
-
-Get real-time streaming responses for long-form answers.
-
-**Endpoint:** `POST /api/v1/query-stream`
-
-**Request Body:**
-```json
-{
-  "query": "Explain the impact of climate change",
-  "stream": true
-}
-```
-
-**Response:** Server-Sent Events (SSE) stream
-
-```
-data: {"chunk": "Climate change has significant", "type": "text"}
-
-data: {"chunk": " impacts on global weather patterns", "type": "text"}
-
-data: {"chunk": "...", "type": "text"}
-
-data: {"sources": [...], "type": "sources"}
-
-data: {"type": "done"}
-```
-
-**Example (JavaScript):**
-```javascript
-const response = await fetch('/api/v1/query-stream', {
-  method: 'POST',
-  headers: {'Content-Type': 'application/json'},
-  body: JSON.stringify({query: "Explain renewable energy"})
-});
-
-const reader = response.body.getReader();
-while (true) {
-  const {done, value} = await reader.read();
-  if (done) break;
-  
-  const chunk = new TextDecoder().decode(value);
-  // Process streaming chunk
-}
-```
-
----
-
-## System Endpoints
-
-### Health Check
-
-Check system status and availability.
-
-**Endpoint:** `GET /api/status`
-
-**Example:**
-```bash
-curl "http://localhost:8001/api/status"
-```
-
-**Response:**
-```json
-{
-  "status": "healthy",
-  "version": "1.3.0",
-  "uptime": 1642248600.123,
-  "features": {
-    "vector_search": true,
-    "llm_generation": true,
-    "document_processing": true
-  },
-  "statistics": {
-    "documents_uploaded": 15,
-    "total_chunks": 342,
-    "embeddings_created": 342
-  },
-  "ollama": {
-    "available": true,
-    "model": "phi3-mini:latest",
-    "models": ["phi3-mini:latest", "llama3.2:1b"]
-  }
-}
-```
-
-**Status Values:**
-- `healthy` - All systems operational
-- `degraded` - Some features unavailable
-- `unavailable` - System not functioning
-
----
-
-## Request/Response Models
-
-### Document Models
-
-**DocumentResponse:**
-```typescript
-{
-  id: number;
-  filename: string;
-  size: number;
-  content_type: string;
-  status: "processing" | "processed" | "error";
-  chunks_count?: number;
-  upload_date?: string;
-}
-```
-
-### Query Models
-
-**QueryRequest:**
-```typescript
-{
-  query: string;
-  top_k?: number;
-  use_llm?: boolean;
-}
-```
-
-**QueryResponse:**
-```typescript
-{
-  query: string;
-  results: Array<{
-    document_id: number;
-    source_document: string;
-    content: string;
-    score: number;
-    metadata: {
-      chunk_id: number;
-      similarity_score: number;
-    };
-  }>;
-  total_results: number;
-}
-```
-
-**ChatRequest:**
-```typescript
-{
-  query: string;
-  chat_history?: Array<{
-    query: string;
-    response: string;
-  }>;
-  max_tokens?: number;
-  temperature?: number;
-  context_limit?: number;
-}
-```
-
-**ChatResponse:**
-```typescript
-{
-  response: string;
-  query?: string;
-  context?: Array<{
-    source_document: string;
-    content: string;
-    similarity_score: number;
-  }>;
-  confidence?: number;
-  processing_time?: number;
-}
-```
-
----
-
-## Error Codes
-
-### Common Errors
-
-**400 Bad Request:**
-```json
-{
-  "detail": "Query cannot be empty"
-}
-```
-
-**422 Validation Error:**
-```json
-{
-  "detail": [
-    {
-      "loc": ["body", "query"],
-      "msg": "field required",
-      "type": "value_error.missing"
-    }
-  ]
-}
-```
-
-**429 Rate Limited:**
-```json
-{
-  "detail": "Rate limit exceeded. Please try again later."
-}
-```
-
-**500 Internal Server Error:**
-```json
-{
-  "detail": "Error processing request: <error details>"
-}
-```
-
----
-
-## Performance Considerations
-
-### Optimization Tips
-
-1. **Use Optimized Endpoint**: For widgets and real-time applications
-2. **Limit Context**: Reduce `context_limit` for faster responses
-3. **Cache Results**: Repeated queries are cached automatically
-4. **Batch Operations**: Upload multiple documents in sequence
-5. **Monitor Rate Limits**: Respect API rate limits
-
-### Response Times
-
-- **Vector Search**: 100-300ms
-- **Enhanced Query**: 2-30 seconds (depends on LLM)
-- **Optimized Query**: 2-10 seconds
-- **Cached Queries**: 50-100ms
-
-### Scaling Considerations
-
-- **Concurrent Requests**: API handles 50+ concurrent queries
-- **Document Limits**: No hard limit, but memory usage scales with documents
-- **Embedding Cache**: Automatically managed LRU cache
-- **Rate Limiting**: Protects against abuse
-
----
-
-## Integration Examples
-
-### Python
-
-```python
-import requests
-
-# Upload document
-with open('document.pdf', 'rb') as f:
-    response = requests.post(
-        'http://localhost:8001/api/v1/documents',
-        files={'file': f}
-    )
-
-# Query with LLM
-response = requests.post(
-    'http://localhost:8001/api/v1/query/optimized',
-    json={
-        'query': 'What is the main topic?',
-        'context_limit': 3
-    }
-)
-result = response.json()
-print(result['response'])
-```
-
-### JavaScript
-
-```javascript
-// Upload document
-const formData = new FormData();
-formData.append('file', fileInput.files[0]);
-
-const uploadResponse = await fetch('/api/v1/documents', {
-    method: 'POST',
-    body: formData
-});
-
-// Query
-const queryResponse = await fetch('/api/v1/query/optimized', {
-    method: 'POST',
-    headers: {'Content-Type': 'application/json'},
-    body: JSON.stringify({
-        query: 'Explain the main concepts',
-        context_limit: 3
-    })
-});
-
-const result = await queryResponse.json();
-console.log(result.response);
-```
-
-### cURL
-
-```bash
-# Upload
-curl -X POST "http://localhost:8001/api/v1/documents" \
-  -F "file=@document.pdf"
-
-# Query
-curl -X POST "http://localhost:8001/api/v1/query/optimized" \
-  -H "Content-Type: application/json" \
-  -d '{"query": "Summarize the document", "context_limit": 3}'
-```
-
----
-
-## Changelog
-
-### v1.3.0 (Current)
-- Added optimized query endpoint
-- Improved error handling and validation
-- Added source highlighting
-- Performance optimizations (5-10x faster)
-- Enhanced widget support
-
-### v1.2.0
-- Added streaming responses
-- Improved LLM integration
-- Better caching system
-- Enhanced document processing
-
-### v1.1.0
-- Added chat endpoint with history
-- Improved vector search
-- Better error responses
-- Rate limiting implementation
-
-### v1.0.0
-- Initial API release
-- Basic document upload/query
-- Vector search functionality
-- LLM integration
+For spot-checking answer quality in a reviewer's own language - does not change
+the tutor's actual response language.
+
+### `GET /health` - Health check
+
+Returns `200` with basic service status; used both for manual checks and by
+device firmware to confirm connectivity before/after WiFi onboarding.
+
+## Admin Endpoints
+
+All under `/admin`, browser-authenticated (CSRF token required for
+state-changing calls). See `core/routers/admin.py` for the full set; notable
+ones:
+
+- `GET/POST /admin/settings/language` - active response language
+- `GET/POST /admin/models`, `POST /admin/models/switch` - Ollama model management
+- `GET/POST /admin/devices` - list/register physical devices
+- `DELETE /admin/devices/{id}` - revoke a device (disables its key)
+- `DELETE /admin/devices/{id}/purge` - permanently delete an already-revoked device
+- `GET /admin/devices/{id}/summary` - stats + AI-generated activity summary for one device's learner
+- `GET /admin/documents/management` (page) - content analysis/cleanup tools
+
+## Notes
+
+- No enforced rate limiting is currently implemented - don't rely on any
+  specific requests-per-minute figure.
+- Responses may be served from a short-lived cache; failed/errored answers are
+  explicitly never cached (a real bug once caused a failure to be served
+  repeatedly for up to 24 hours - fixed).

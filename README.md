@@ -26,6 +26,7 @@ is now the primary feature.
 - [API Usage](#api-usage)
 - [Project Structure](#project-structure)
 - [What's next](#whats-next)
+- [Contributing & Security](#contributing--security)
 - [License](#license)
 
 ## How it works
@@ -48,11 +49,13 @@ Spoken answer + on-screen/LCD text, with source citations
 shown (not read aloud) when the answer came from a document
 ```
 
-Today, this is testable end-to-end from a browser tab (using your computer's
-own microphone/speakers as a stand-in). The long-term target is a physical
-device — an ESP32 microcontroller with a mic, speaker, and LCD screen — that
-calls the exact same API over the local network; that hardware/firmware isn't
-built yet.
+This is testable end-to-end from a browser tab (using your computer's own
+microphone/speakers as a stand-in). It's also been tested end-to-end against
+real ESP32 hardware ("Sparky") over local WiFi — including a branded captive
+portal for no-code WiFi onboarding — though the physical mic/amp/speaker
+circuit is still being assembled, so the hardware currently exercises the
+network/API path with a pre-recorded test file rather than a live recording.
+See [PROJECT_HANDOFF.md](PROJECT_HANDOFF.md) for the current hardware status.
 
 ## Features
 
@@ -188,18 +191,22 @@ header. The web UI handles this automatically.
 ```
 open-source-rag-system/
 ├── core/
-│   ├── main.py                    # FastAPI app, security headers, router registration
+│   ├── main.py                    # FastAPI app, security headers, CSRF, router registration
 │   ├── routers/
-│   │   ├── query.py               # POST /api/v1/query (text)
-│   │   ├── voice.py                # POST /api/v1/voice/query (STT -> RAG -> TTS)
+│   │   ├── query.py               # POST /api/v1/query (text) + get_rag_service DI
+│   │   ├── voice.py               # POST /api/v1/voice/query (STT -> RAG -> TTS)
 │   │   ├── documents.py           # Upload, list, download, chunk retrieval
-│   │   └── admin.py               # Model/language/database admin endpoints
+│   │   ├── admin.py               # Model/language/device/database admin endpoints
+│   │   ├── device_auth.py         # X-Device-Key resolution for hardware clients
+│   │   └── document_manager.py    # Document content analysis/cleanup
 │   ├── services/
 │   │   ├── simple_rag_service.py  # Core tutor logic: search, prompt, answer, language
-│   │   ├── voice_service.py       # faster-whisper (STT) + piper (TTS)
+│   │   ├── voice_service.py       # faster-whisper (STT) + piper (TTS), lazy singletons
 │   │   └── document_service.py    # Upload validation, chunking, embeddings
+│   ├── repositories/              # Data access layer (SQLite-backed)
+│   ├── di/                        # Dependency injection container/service config
 │   ├── ollama_client.py           # Ollama integration
-│   └── templates/                 # Admin dashboard, document management HTML
+│   └── templates/                 # Admin dashboard, devices, interaction log, diagnostics
 ├── static/
 │   ├── index.html                 # Main UI (Text Chat + Voice Chat tabs)
 │   └── voice_samples/             # Sample TTS clips for voice comparison
@@ -215,18 +222,27 @@ open-source-rag-system/
 ├── deployment/requirements/
 │   ├── simple_requirements.txt    # Core dependencies
 │   └── voice_requirements.txt     # Optional: faster-whisper, piper-tts
+├── docs/                          # Project docs, API reference, Sparky hardware PDFs
+├── scripts/                       # One-off generator/helper scripts (not part of the running app)
 ├── PROJECT_HANDOFF.md             # Detailed project state / handoff notes
+├── PROTOCOL.md                    # Hardware wire protocol spec (ESP32 binary framing)
 └── simple_api.py                  # Entry point
 ```
 
 ## What's next
 
-The next phase is the physical device: ESP32 firmware to record microphone
-audio, POST it to `/api/v1/voice/query` over local WiFi, play the returned
-audio through a speaker, and show the answer text on an LCD. Hardware
-specifics (mic, speaker/amp, LCD driver) aren't finalized yet. See
+ESP32 hardware bring-up ("Sparky") is underway: WiFi captive portal onboarding
+and the network/device-auth path to this backend are both working against real
+hardware. What's left is assembling the physical audio circuit (INMP441 mic,
+MAX98357A amp, speaker) and the enclosure. See
 [PROJECT_HANDOFF.md](PROJECT_HANDOFF.md) for full details on the current
 state, recent fixes, and known rough edges.
+
+## Contributing & Security
+
+See [CONTRIBUTING.md](CONTRIBUTING.md) for setup/PR notes and
+[SECURITY.md](SECURITY.md) for the security model and how to report a
+vulnerability.
 
 ## License
 
