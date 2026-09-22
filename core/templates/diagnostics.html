@@ -3,7 +3,8 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Diagnostics - STEM Voice Tutor Admin</title>
+    <title>Diagnostics - Sparky Admin</title>
+    <link rel="icon" type="image/png" href="/static/images/sparky/icon.png">
     <link rel="stylesheet" href="/static/theme.css">
     <style>
         body { padding: var(--space-6); }
@@ -29,11 +30,11 @@
             content: "";
             position: absolute;
             inset: 0;
-            background: radial-gradient(60% 90% at 50% -10%, rgba(59, 91, 219, 0.35), transparent 70%);
+            background: radial-gradient(60% 90% at 50% -10%, rgba(245, 130, 31, 0.35), transparent 70%);
             pointer-events: none;
         }
         .admin-header h1 { display: inline-flex; align-items: center; gap: var(--space-3); font-size: var(--text-2xl); margin-bottom: var(--space-2); position: relative; }
-        .admin-header h1 .icon { color: #8fa4ff; }
+        .admin-header h1 .icon { color: var(--color-brand-blue); }
         .admin-header p { opacity: 0.75; font-size: var(--text-sm); position: relative; }
 
         .nav-links { margin-top: var(--space-5); display: flex; gap: var(--space-2); justify-content: center; position: relative; }
@@ -98,7 +99,7 @@
 
     <div class="admin-container">
         <div class="admin-header">
-            <h1><svg class="icon"><use href="#icon-activity"/></svg> Diagnostics</h1>
+            <h1><svg class="icon"><use href="#icon-activity"/></svg> Sparky Diagnostics</h1>
             <p>A live snapshot of the tutor's own health - no new tracking, just what already exists</p>
             <div class="nav-links">
                 <a href="/admin/"><svg class="icon"><use href="#icon-settings"/></svg> Admin Home</a>

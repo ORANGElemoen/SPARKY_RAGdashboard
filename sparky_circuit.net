@@ -1,0 +1,517 @@
+(export 
+  (version "D")
+  (design
+    (source "sparky_circuit.py")
+    (date "09/21/2026 03:35 AM")
+    (tool "SKiDL (2.3.0)")
+    (sheet
+      (number 1)
+      (name "/")
+      (tstamps "/")
+      (title_block
+        (title)
+        (company)
+        (rev)
+        (date)
+        (source "sparky_circuit.py")
+        (comment
+          (number "1")
+          (value ""))
+        (comment
+          (number "2")
+          (value ""))
+        (comment
+          (number "3")
+          (value ""))
+        (comment
+          (number "4")
+          (value ""))
+        (comment
+          (number "5")
+          (value ""))
+        (comment
+          (number "6")
+          (value ""))
+        (comment
+          (number "7")
+          (value ""))
+        (comment
+          (number "8")
+          (value ""))
+        (comment
+          (number "9")
+          (value "")))))
+  (components
+    (comp
+      (ref "D1")
+      (value "LED")
+      (description "Light emitting diode")
+      (footprint "LED_THT:LED_D5.0mm")
+      (fields
+        (field
+          (name "Description") "Light emitting diode")
+        (field
+          (name "Footprint") "LED_THT:LED_D5.0mm")
+        (field
+          (name "Datasheet"))
+        (field
+          (name "SKiDL Tag") "4iZmUWGKnb")
+        (field
+          (name "SKiDL Line") "sparky_circuit.py:140"))
+      (libsource
+        (lib "Device")
+        (part "LED"))
+      (sheetpath
+        (names "/")
+        (tstamps "/"))
+      (component_classes)
+      (tstamps "a1bd8dd2-12b7-5a0e-aba3-a899f68df313"))
+    (comp
+      (ref "J_AMP")
+      (value "Conn_01x09")
+      (description "Generic connector, single row, 01x09, script generated (kicad-library-utils/schlib/autogen/connector/)")
+      (footprint "Connector_PinHeader_2.54mm:PinHeader_1x09_P2.54mm_Vertical")
+      (fields
+        (field
+          (name "Description") "Generic connector, single row, 01x09, script generated (kicad-library-utils/schlib/autogen/connector/)")
+        (field
+          (name "Footprint") "Connector_PinHeader_2.54mm:PinHeader_1x09_P2.54mm_Vertical")
+        (field
+          (name "Datasheet"))
+        (field
+          (name "SKiDL Tag") "0z6w6ula3I")
+        (field
+          (name "SKiDL Line") "sparky_circuit.py:95"))
+      (libsource
+        (lib "Connector_Generic")
+        (part "Conn_01x09"))
+      (sheetpath
+        (names "/")
+        (tstamps "/"))
+      (component_classes)
+      (tstamps "b70fbac0-6a6d-5fa7-9ecd-28d5396e198b"))
+    (comp
+      (ref "J_MATRIX")
+      (value "Conn_01x05")
+      (description "Generic connector, single row, 01x05, script generated (kicad-library-utils/schlib/autogen/connector/)")
+      (footprint "Connector_PinHeader_2.54mm:PinHeader_1x05_P2.54mm_Vertical")
+      (fields
+        (field
+          (name "Description") "Generic connector, single row, 01x05, script generated (kicad-library-utils/schlib/autogen/connector/)")
+        (field
+          (name "Footprint") "Connector_PinHeader_2.54mm:PinHeader_1x05_P2.54mm_Vertical")
+        (field
+          (name "Datasheet"))
+        (field
+          (name "SKiDL Tag") "OODVobjdhJ")
+        (field
+          (name "SKiDL Line") "sparky_circuit.py:124"))
+      (libsource
+        (lib "Connector_Generic")
+        (part "Conn_01x05"))
+      (sheetpath
+        (names "/")
+        (tstamps "/"))
+      (component_classes)
+      (tstamps "e059e1a2-f108-5adb-a686-8496f38bf772"))
+    (comp
+      (ref "J_MIC")
+      (value "Conn_01x06")
+      (description "Generic connector, single row, 01x06, script generated (kicad-library-utils/schlib/autogen/connector/)")
+      (footprint "Connector_PinHeader_2.54mm:PinHeader_1x06_P2.54mm_Vertical")
+      (fields
+        (field
+          (name "Description") "Generic connector, single row, 01x06, script generated (kicad-library-utils/schlib/autogen/connector/)")
+        (field
+          (name "Footprint") "Connector_PinHeader_2.54mm:PinHeader_1x06_P2.54mm_Vertical")
+        (field
+          (name "Datasheet"))
+        (field
+          (name "SKiDL Tag") "5rebcuGTql")
+        (field
+          (name "SKiDL Line") "sparky_circuit.py:73"))
+      (libsource
+        (lib "Connector_Generic")
+        (part "Conn_01x06"))
+      (sheetpath
+        (names "/")
+        (tstamps "/"))
+      (component_classes)
+      (tstamps "17e8604b-2bb9-5fd9-ac9c-ba158934d815"))
+    (comp
+      (ref "J_SPK")
+      (value "Conn_01x02")
+      (description "Generic connector, single row, 01x02, script generated (kicad-library-utils/schlib/autogen/connector/)")
+      (footprint "TerminalBlock:TerminalBlock_MaiXu_MX126-5.0-02P_1x02_P5.00mm")
+      (fields
+        (field
+          (name "Description") "Generic connector, single row, 01x02, script generated (kicad-library-utils/schlib/autogen/connector/)")
+        (field
+          (name "Footprint") "TerminalBlock:TerminalBlock_MaiXu_MX126-5.0-02P_1x02_P5.00mm")
+        (field
+          (name "Datasheet"))
+        (field
+          (name "SKiDL Tag") "Zol7YU5eha")
+        (field
+          (name "SKiDL Line") "sparky_circuit.py:111"))
+      (libsource
+        (lib "Connector_Generic")
+        (part "Conn_01x02"))
+      (sheetpath
+        (names "/")
+        (tstamps "/"))
+      (component_classes)
+      (tstamps "5bccfc40-4422-5d5c-9572-a8de2cd298eb"))
+    (comp
+      (ref "J_TOUCH")
+      (value "Conn_01x01")
+      (description "Generic connector, single row, 01x01, script generated (kicad-library-utils/schlib/autogen/connector/)")
+      (footprint "Connector_PinHeader_2.54mm:PinHeader_1x01_P2.54mm_Vertical")
+      (fields
+        (field
+          (name "Description") "Generic connector, single row, 01x01, script generated (kicad-library-utils/schlib/autogen/connector/)")
+        (field
+          (name "Footprint") "Connector_PinHeader_2.54mm:PinHeader_1x01_P2.54mm_Vertical")
+        (field
+          (name "Datasheet"))
+        (field
+          (name "SKiDL Tag") "lNgbFwOalD")
+        (field
+          (name "SKiDL Line") "sparky_circuit.py:175"))
+      (libsource
+        (lib "Connector_Generic")
+        (part "Conn_01x01"))
+      (sheetpath
+        (names "/")
+        (tstamps "/"))
+      (component_classes)
+      (tstamps "03e86b1b-3fe5-5871-86bc-efc145ba550b"))
+    (comp
+      (ref "R1")
+      (value "220")
+      (description "Resistor")
+      (footprint "Resistor_THT:R_Axial_DIN0207_L6.3mm_D2.5mm_P7.62mm_Horizontal")
+      (fields
+        (field
+          (name "Description") "Resistor")
+        (field
+          (name "Footprint") "Resistor_THT:R_Axial_DIN0207_L6.3mm_D2.5mm_P7.62mm_Horizontal")
+        (field
+          (name "Datasheet"))
+        (field
+          (name "SKiDL Tag") "ycc2IVgYiZ")
+        (field
+          (name "SKiDL Line") "sparky_circuit.py:147"))
+      (libsource
+        (lib "Device")
+        (part "R"))
+      (sheetpath
+        (names "/")
+        (tstamps "/"))
+      (component_classes)
+      (tstamps "44e7a38b-2900-5c73-834a-8f8eebbd63c1"))
+    (comp
+      (ref "SW1")
+      (value "SW_Push")
+      (description "Push button switch, generic, two pins")
+      (footprint "Button_Switch_THT:SW_PUSH_6mm")
+      (fields
+        (field
+          (name "Description") "Push button switch, generic, two pins")
+        (field
+          (name "Footprint") "Button_Switch_THT:SW_PUSH_6mm")
+        (field
+          (name "Datasheet"))
+        (field
+          (name "SKiDL Tag") "GpnsTpZkav")
+        (field
+          (name "SKiDL Line") "sparky_circuit.py:163"))
+      (libsource
+        (lib "Switch")
+        (part "SW_Push"))
+      (sheetpath
+        (names "/")
+        (tstamps "/"))
+      (component_classes)
+      (tstamps "60e0cc12-b518-5583-860a-f82d6f7be536"))
+    (comp
+      (ref "U1")
+      (value "Conn_01x16")
+      (description "Generic connector, single row, 01x16, script generated (kicad-library-utils/schlib/autogen/connector/)")
+      (footprint "Connector_PinHeader_2.54mm:PinHeader_1x16_P2.54mm_Vertical")
+      (fields
+        (field
+          (name "Description") "Generic connector, single row, 01x16, script generated (kicad-library-utils/schlib/autogen/connector/)")
+        (field
+          (name "Footprint") "Connector_PinHeader_2.54mm:PinHeader_1x16_P2.54mm_Vertical")
+        (field
+          (name "Datasheet"))
+        (field
+          (name "SKiDL Tag") "IAk54dG9a5")
+        (field
+          (name "SKiDL Line") "sparky_circuit.py:22"))
+      (libsource
+        (lib "Connector_Generic")
+        (part "Conn_01x16"))
+      (sheetpath
+        (names "/")
+        (tstamps "/"))
+      (component_classes)
+      (tstamps "7b0e5ffc-9ffa-522e-af5a-af845fc78dd8")))
+  (nets
+    (net
+      (code 1)
+      (name "3V3")
+      (class "Default")
+      (node
+        (ref "J_MIC")
+        (pin "1")
+        (pintype "PASSIVE"))
+      (node
+        (ref "U1")
+        (pin "2")
+        (pintype "PASSIVE")))
+    (net
+      (code 2)
+      (name "5V")
+      (class "Default")
+      (node
+        (ref "J_AMP")
+        (pin "1")
+        (pintype "PASSIVE"))
+      (node
+        (ref "J_MATRIX")
+        (pin "1")
+        (pintype "PASSIVE"))
+      (node
+        (ref "R1")
+        (pin "1")
+        (pintype "PASSIVE"))
+      (node
+        (ref "U1")
+        (pin "1")
+        (pintype "PASSIVE")))
+    (net
+      (code 3)
+      (name "AMP_BCLK")
+      (class "Default")
+      (node
+        (ref "J_AMP")
+        (pin "4")
+        (pintype "PASSIVE"))
+      (node
+        (ref "U1")
+        (pin "7")
+        (pintype "PASSIVE")))
+    (net
+      (code 4)
+      (name "AMP_DIN")
+      (class "Default")
+      (node
+        (ref "J_AMP")
+        (pin "6")
+        (pintype "PASSIVE"))
+      (node
+        (ref "U1")
+        (pin "9")
+        (pintype "PASSIVE")))
+    (net
+      (code 5)
+      (name "AMP_LRC")
+      (class "Default")
+      (node
+        (ref "J_AMP")
+        (pin "5")
+        (pintype "PASSIVE"))
+      (node
+        (ref "U1")
+        (pin "8")
+        (pintype "PASSIVE")))
+    (net
+      (code 6)
+      (name "AMP_SD_MUTE")
+      (class "Default")
+      (node
+        (ref "J_AMP")
+        (pin "3")
+        (pintype "PASSIVE"))
+      (node
+        (ref "U1")
+        (pin "16")
+        (pintype "PASSIVE")))
+    (net
+      (code 7)
+      (name "BTN_PTT")
+      (class "Default")
+      (node
+        (ref "SW1")
+        (pin "1")
+        (pintype "PASSIVE"))
+      (node
+        (ref "U1")
+        (pin "14")
+        (pintype "PASSIVE")))
+    (net
+      (code 8)
+      (name "GND")
+      (class "Default")
+      (node
+        (ref "J_AMP")
+        (pin "2")
+        (pintype "PASSIVE"))
+      (node
+        (ref "J_AMP")
+        (pin "9")
+        (pintype "PASSIVE"))
+      (node
+        (ref "J_MATRIX")
+        (pin "2")
+        (pintype "PASSIVE"))
+      (node
+        (ref "J_MIC")
+        (pin "2")
+        (pintype "PASSIVE"))
+      (node
+        (ref "J_MIC")
+        (pin "3")
+        (pintype "PASSIVE"))
+      (node
+        (ref "SW1")
+        (pin "2")
+        (pintype "PASSIVE"))
+      (node
+        (ref "U1")
+        (pin "3")
+        (pintype "PASSIVE")))
+    (net
+      (code 9)
+      (name "LED_CATHODE")
+      (class "Default")
+      (node
+        (ref "D1")
+        (pin "1")
+        (pintype "PASSIVE"))
+      (node
+        (ref "U1")
+        (pin "13")
+        (pintype "PASSIVE")))
+    (net
+      (code 10)
+      (name "MATRIX_CLK")
+      (class "Default")
+      (node
+        (ref "J_MATRIX")
+        (pin "5")
+        (pintype "PASSIVE"))
+      (node
+        (ref "U1")
+        (pin "10")
+        (pintype "PASSIVE")))
+    (net
+      (code 11)
+      (name "MATRIX_CS")
+      (class "Default")
+      (node
+        (ref "J_MATRIX")
+        (pin "4")
+        (pintype "PASSIVE"))
+      (node
+        (ref "U1")
+        (pin "12")
+        (pintype "PASSIVE")))
+    (net
+      (code 12)
+      (name "MATRIX_DIN")
+      (class "Default")
+      (node
+        (ref "J_MATRIX")
+        (pin "3")
+        (pintype "PASSIVE"))
+      (node
+        (ref "U1")
+        (pin "11")
+        (pintype "PASSIVE")))
+    (net
+      (code 13)
+      (name "MIC_SCK")
+      (class "Default")
+      (node
+        (ref "J_MIC")
+        (pin "4")
+        (pintype "PASSIVE"))
+      (node
+        (ref "U1")
+        (pin "4")
+        (pintype "PASSIVE")))
+    (net
+      (code 14)
+      (name "MIC_SD")
+      (class "Default")
+      (node
+        (ref "J_MIC")
+        (pin "6")
+        (pintype "PASSIVE"))
+      (node
+        (ref "U1")
+        (pin "6")
+        (pintype "PASSIVE")))
+    (net
+      (code 15)
+      (name "MIC_WS")
+      (class "Default")
+      (node
+        (ref "J_MIC")
+        (pin "5")
+        (pintype "PASSIVE"))
+      (node
+        (ref "U1")
+        (pin "5")
+        (pintype "PASSIVE")))
+    (net
+      (code 16)
+      (name "N$1")
+      (class "Default")
+      (node
+        (ref "J_AMP")
+        (pin "7")
+        (pintype "PASSIVE"))
+      (node
+        (ref "J_SPK")
+        (pin "1")
+        (pintype "PASSIVE")))
+    (net
+      (code 17)
+      (name "N$2")
+      (class "Default")
+      (node
+        (ref "J_AMP")
+        (pin "8")
+        (pintype "PASSIVE"))
+      (node
+        (ref "J_SPK")
+        (pin "2")
+        (pintype "PASSIVE")))
+    (net
+      (code 18)
+      (name "N$3")
+      (class "Default")
+      (node
+        (ref "D1")
+        (pin "2")
+        (pintype "PASSIVE"))
+      (node
+        (ref "R1")
+        (pin "2")
+        (pintype "PASSIVE")))
+    (net
+      (code 19)
+      (name "TOUCH_PAD")
+      (class "Default")
+      (node
+        (ref "J_TOUCH")
+        (pin "1")
+        (pintype "PASSIVE"))
+      (node
+        (ref "U1")
+        (pin "15")
+        (pintype "PASSIVE")))))

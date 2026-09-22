@@ -587,6 +587,31 @@ async def revoke_device(device_id: int):
         raise HTTPException(status_code=500, detail=str(e))
 
 
+@router.delete("/devices/{device_id}/purge")
+async def delete_device(device_id: int):
+    """Permanently remove a revoked device from the list.
+
+    Only allowed once a device is already revoked - keeps a device from
+    being wiped out while its key could still authenticate.
+    """
+    try:
+        from ..repositories.factory import RepositoryFactory
+
+        device_repo = RepositoryFactory.create_production_repository().devices
+        deleted = await device_repo.delete_device(device_id)
+        if not deleted:
+            raise HTTPException(
+                status_code=404,
+                detail="Device not found, or it must be revoked before it can be deleted",
+            )
+        return {"success": True}
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Error deleting device {device_id}: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
 @router.get("/devices/{device_id}/summary")
 async def get_device_summary(device_id: int, limit: int = 200):
     """Breakdown of what one device's learner(s) have been asking about.

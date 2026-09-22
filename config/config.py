@@ -23,7 +23,7 @@ class Config:
     
     # API configuration
     API_HOST = os.getenv('API_HOST', '0.0.0.0')
-    API_PORT = int(os.getenv('API_PORT', '8000'))
+    API_PORT = int(os.getenv('API_PORT', '8001'))
     
     # Security
     SECRET_KEY = os.getenv('SECRET_KEY', 'default-secret-key-change-in-production')

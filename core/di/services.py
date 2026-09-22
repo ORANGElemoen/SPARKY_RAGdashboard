@@ -11,7 +11,7 @@ from ..repositories.interfaces import IDocumentRepository, IVectorSearchReposito
 from .container import DIContainer, get_container
 
 try:
-    from ..config.config import config
+    from config.config import config
 except ImportError:
     config = None
 from ..services import (

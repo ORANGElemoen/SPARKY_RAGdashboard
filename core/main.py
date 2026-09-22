@@ -106,7 +106,7 @@ except ImportError as e:
 
 # Import configuration
 try:
-    from .config.config import config
+    from config.config import config
 
     CONFIG_AVAILABLE = True
 except ImportError:

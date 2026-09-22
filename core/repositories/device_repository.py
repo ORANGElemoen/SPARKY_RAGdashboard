@@ -120,6 +120,23 @@ class DeviceRepository(SQLiteRepository):
             conn.commit()
             return cursor.rowcount > 0
 
+    async def delete_device(self, device_id: int) -> bool:
+        """Permanently remove a revoked device's record.
+
+        Only revoked devices can be deleted - an active device must be
+        revoked first, so a device is never removed while its key could
+        still be in use. Interaction log rows referencing this device_id
+        are left as-is; they're historical records, not tied to the
+        device's continued existence.
+        """
+        with self.get_connection() as conn:
+            cursor = conn.execute(
+                "DELETE FROM devices WHERE id = ? AND revoked_at IS NOT NULL",
+                (device_id,),
+            )
+            conn.commit()
+            return cursor.rowcount > 0
+
     async def count_devices(self) -> Dict[str, int]:
         with self.get_connection() as conn:
             total = conn.execute("SELECT COUNT(*) FROM devices").fetchone()[0]

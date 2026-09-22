@@ -3,7 +3,8 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Interaction Log - STEM Voice Tutor Admin</title>
+    <title>Interaction Log - Sparky Admin</title>
+    <link rel="icon" type="image/png" href="/static/images/sparky/icon.png">
     <link rel="stylesheet" href="/static/theme.css">
     <style>
         body { padding: var(--space-6); }
@@ -29,12 +30,12 @@
             content: "";
             position: absolute;
             inset: 0;
-            background: radial-gradient(60% 90% at 50% -10%, rgba(59, 91, 219, 0.35), transparent 70%);
+            background: radial-gradient(60% 90% at 50% -10%, rgba(245, 130, 31, 0.35), transparent 70%);
             pointer-events: none;
         }
 
         .admin-header h1 { display: inline-flex; align-items: center; gap: var(--space-3); font-size: var(--text-2xl); margin-bottom: var(--space-2); position: relative; }
-        .admin-header h1 .icon { color: #8fa4ff; }
+        .admin-header h1 .icon { color: var(--color-brand-blue); }
         .admin-header p { opacity: 0.75; font-size: var(--text-sm); position: relative; }
 
         .admin-header .nav-links { margin-top: var(--space-5); display: flex; gap: var(--space-2); justify-content: center; position: relative; }
@@ -202,7 +203,7 @@
 
     <div class="admin-container">
         <div class="admin-header">
-            <h1><svg class="icon"><use href="#icon-message"/></svg> Interaction Log</h1>
+            <h1><svg class="icon"><use href="#icon-message"/></svg> Sparky Interaction Log</h1>
             <p>Every question asked, the tutor's answer, and the sources it was grounded in</p>
             <div class="nav-links">
                 <a href="/admin/"><svg class="icon"><use href="#icon-settings"/></svg> Admin Home</a>
@@ -592,7 +593,27 @@
                 const data = await response.json();
 
                 if (!data.interactions || data.interactions.length === 0) {
-                    entriesDiv.innerHTML = '<div class="empty-state">No logged questions match this filter yet.</div>';
+                    entriesDiv.replaceChildren();
+                    const empty = document.createElement('div');
+                    empty.className = 'empty-state';
+
+                    const img = document.createElement('img');
+                    img.src = '/static/images/sparky/empty-questions.png';
+                    img.alt = '';
+                    img.width = 140;
+                    img.style.marginBottom = 'var(--space-4)';
+
+                    const title = document.createElement('div');
+                    title.style.fontWeight = 'var(--font-semibold)';
+                    title.style.color = 'var(--color-text)';
+                    title.style.marginBottom = 'var(--space-1)';
+                    title.textContent = 'No questions logged yet';
+
+                    const subtitle = document.createElement('div');
+                    subtitle.textContent = 'When your students ask questions, they\'ll appear here.';
+
+                    empty.append(img, title, subtitle);
+                    entriesDiv.append(empty);
                 } else {
                     entriesDiv.innerHTML = '';
                     data.interactions.forEach((entry) => entriesDiv.appendChild(renderEntry(entry)));

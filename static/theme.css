@@ -9,12 +9,18 @@
 */
 
 :root {
-  /* Accent */
-  --color-accent: #3b5bdb;
-  --color-accent-hover: #2f4bc0;
-  --color-accent-active: #24399a;
-  --color-accent-soft: #eef1fe;
-  --color-accent-soft-border: #d7defc;
+  /* Accent - Sparky orange, darkened from the brand's poster-orange (#f5821f)
+     for WCAG AA contrast as link/button text color; the bright version is
+     fine for large decorative use (see the WiFi portal CSS) but fails AA at
+     text/UI-component sizes. */
+  --color-accent: #a8500d;
+  --color-accent-hover: #8a4009;
+  --color-accent-active: #6e330a;
+  --color-accent-soft: #fbe8d9;
+  --color-accent-soft-border: #f0c9a3;
+
+  /* Sparky light blue - identity color for headings/highlights */
+  --color-brand-blue: #3aa0d8;
 
   /* Neutrals */
   --color-bg: #f7f8fa;
@@ -27,9 +33,9 @@
   --color-text-tertiary: #667085; /* was #98a2b3 (2.6:1 on white, fails AA) - now 5:1 */
   --color-text-on-accent: #ffffff;
 
-  /* Dark surface, used for hero/header bands instead of a purple gradient */
-  --color-ink: #0b1220;
-  --color-ink-soft: #16213a;
+  /* Dark surface, used for hero/header bands - Sparky-blue-tinted, not neutral navy */
+  --color-ink: #0d2436;
+  --color-ink-soft: #163c52;
   --color-ink-border: rgba(255, 255, 255, 0.14);
 
   /* Semantic */
@@ -88,7 +94,7 @@
   --shadow-sm: 0 1px 3px rgba(16, 24, 40, 0.08), 0 1px 2px rgba(16, 24, 40, 0.04);
   --shadow-md: 0 4px 8px -2px rgba(16, 24, 40, 0.08), 0 2px 4px -2px rgba(16, 24, 40, 0.04);
   --shadow-lg: 0 12px 24px -6px rgba(16, 24, 40, 0.14), 0 4px 8px -4px rgba(16, 24, 40, 0.06);
-  --shadow-focus: 0 0 0 3px rgba(59, 91, 219, 0.28);
+  --shadow-focus: 0 0 0 3px rgba(168, 80, 13, 0.28);
 
   /* Motion */
   --ease-out: cubic-bezier(0.16, 1, 0.3, 1);

@@ -3,7 +3,8 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Devices - STEM Voice Tutor Admin</title>
+    <title>Devices - Sparky Admin</title>
+    <link rel="icon" type="image/png" href="/static/images/sparky/icon.png">
     <link rel="stylesheet" href="/static/theme.css">
     <style>
         body { padding: var(--space-6); }
@@ -29,11 +30,11 @@
             content: "";
             position: absolute;
             inset: 0;
-            background: radial-gradient(60% 90% at 50% -10%, rgba(59, 91, 219, 0.35), transparent 70%);
+            background: radial-gradient(60% 90% at 50% -10%, rgba(245, 130, 31, 0.35), transparent 70%);
             pointer-events: none;
         }
         .admin-header h1 { display: inline-flex; align-items: center; gap: var(--space-3); font-size: var(--text-2xl); margin-bottom: var(--space-2); position: relative; }
-        .admin-header h1 .icon { color: #8fa4ff; }
+        .admin-header h1 .icon { color: var(--color-brand-blue); }
         .admin-header p { opacity: 0.75; font-size: var(--text-sm); position: relative; }
 
         .nav-links { margin-top: var(--space-5); display: flex; gap: var(--space-2); justify-content: center; position: relative; }
@@ -109,13 +110,14 @@
       <symbol id="icon-flask" viewBox="0 0 24 24"><path d="M9 2v6.5L4.5 18a2 2 0 0 0 1.8 3h11.4a2 2 0 0 0 1.8-3L15 8.5V2"/><line x1="7" y1="2" x2="17" y2="2"/><line x1="7.5" y1="14" x2="16.5" y2="14"/></symbol>
       <symbol id="icon-key" viewBox="0 0 24 24"><circle cx="8" cy="15" r="4"/><path d="M11 12l9-9M17 3l3 3M14 6l2 2"/></symbol>
       <symbol id="icon-trash" viewBox="0 0 24 24"><path d="M4 6.5h16"/><path d="M8.5 6.5V5a1.5 1.5 0 0 1 1.5-1.5h4A1.5 1.5 0 0 1 15.5 5v1.5"/><path d="M6.5 6.5 7.3 19a1.5 1.5 0 0 0 1.5 1.4h6.4a1.5 1.5 0 0 0 1.5-1.4l.8-12.5"/></symbol>
+      <symbol id="icon-ban" viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><line x1="5.5" y1="18.5" x2="18.5" y2="5.5"/></symbol>
       <symbol id="icon-check-circle" viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><polyline points="8 12.5 11 15.5 16 9"/></symbol>
       <symbol id="icon-message" viewBox="0 0 24 24"><path d="M4 5.5A2.5 2.5 0 0 1 6.5 3h11A2.5 2.5 0 0 1 20 5.5v8a2.5 2.5 0 0 1-2.5 2.5H10l-5 4v-4H6.5A2.5 2.5 0 0 1 4 13.5v-8z"/></symbol>
     </svg>
 
     <div class="admin-container">
         <div class="admin-header">
-            <h1><svg class="icon"><use href="#icon-cpu"/></svg> Devices</h1>
+            <h1><svg class="icon"><use href="#icon-cpu"/></svg> Sparky Devices</h1>
             <p>Registered ESP32 tutor units and their API keys</p>
             <div class="nav-links">
                 <a href="/admin/protocol-test/view"><svg class="icon"><use href="#icon-flask"/></svg> Protocol Test</a>
@@ -131,7 +133,7 @@
             </div>
 
             <div class="new-key-banner" id="newKeyBanner">
-                <svg class="icon"><use href="#icon-check-circle"/></svg>
+                <img src="/static/images/sparky/success.png" alt="" width="48" style="flex-shrink:0">
                 <div style="flex:1">
                     <strong id="newKeyName"></strong> registered. Copy this API key into the
                     device's firmware config now - it will not be shown again.
@@ -171,7 +173,27 @@
                 const data = await response.json();
 
                 if (!data.devices || data.devices.length === 0) {
-                    container.innerHTML = '<div class="empty-state">No devices registered yet.</div>';
+                    container.innerHTML = '';
+                    const empty = document.createElement('div');
+                    empty.className = 'empty-state';
+
+                    const img = document.createElement('img');
+                    img.src = '/static/images/sparky/empty-devices.png';
+                    img.alt = '';
+                    img.width = 140;
+                    img.style.marginBottom = 'var(--space-4)';
+
+                    const title = document.createElement('div');
+                    title.style.fontWeight = 'var(--font-semibold)';
+                    title.style.color = 'var(--color-text)';
+                    title.style.marginBottom = 'var(--space-1)';
+                    title.textContent = 'No devices registered yet';
+
+                    const subtitle = document.createElement('div');
+                    subtitle.textContent = 'Connect your first device to get started with Sparky.';
+
+                    empty.append(img, title, subtitle);
+                    container.append(empty);
                     return;
                 }
 
@@ -182,8 +204,12 @@
                         <td>${formatTimestamp(d.created_at)}</td>
                         <td>${formatTimestamp(d.last_seen_at)}</td>
                         <td>
-                            <a class="btn btn-sm" href="/admin/interaction-log/view?device_id=${d.id}&device_name=${encodeURIComponent(d.name)}"><svg class="icon"><use href="#icon-message"/></svg> Chat Log</a>
-                            ${d.revoked_at ? '' : `<button class="btn btn-sm btn-danger" onclick="revokeDevice(${d.id}, '${escapeHtml(d.name)}')"><svg class="icon"><use href="#icon-trash"/></svg> Revoke</button>`}
+                            <div style="display:flex; gap: var(--space-2); justify-content: flex-end;">
+                                <a class="btn btn-sm" href="/admin/interaction-log/view?device_id=${d.id}&device_name=${encodeURIComponent(d.name)}"><svg class="icon"><use href="#icon-message"/></svg> Chat Log</a>
+                                ${d.revoked_at
+                                    ? `<button class="btn btn-sm btn-danger" onclick="deleteDevice(${d.id}, '${escapeHtml(d.name)}')"><svg class="icon"><use href="#icon-trash"/></svg> Delete</button>`
+                                    : `<button class="btn btn-sm btn-warning" onclick="revokeDevice(${d.id}, '${escapeHtml(d.name)}')"><svg class="icon"><use href="#icon-ban"/></svg> Revoke</button>`}
+                            </div>
                         </td>
                     </tr>
                 `).join('');
@@ -211,6 +237,21 @@
                 loadDevices();
             } catch (error) {
                 alert(`Failed to revoke device: ${error.message}`);
+            }
+        }
+
+        async function deleteDevice(id, name) {
+            if (!confirm(`Permanently delete "${name}"? This removes it from the list entirely and cannot be undone.`)) return;
+            try {
+                const csrfToken = await getCsrfToken();
+                const response = await fetch(`/admin/devices/${id}/purge`, {
+                    method: 'DELETE',
+                    headers: { 'X-CSRF-Token': csrfToken },
+                });
+                if (!response.ok) throw new Error(`HTTP ${response.status}`);
+                loadDevices();
+            } catch (error) {
+                alert(`Failed to delete device: ${error.message}`);
             }
         }
 
