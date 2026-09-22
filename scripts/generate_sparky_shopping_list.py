@@ -13,7 +13,7 @@ from fpdf import FPDF
 from PIL import Image as PILImage
 
 PAGE_W = 210 - 2 * 18  # A4 width minus margins, mm
-IMG_DIR = "docs/sparky_shopping_list_images"
+IMG_DIR = "docs/images"
 
 # (name, description, qty, price_note, link_or_none, supplier, stock_note, image_file)
 ITEMS = [

@@ -1,7 +1,7 @@
 """
 Binary framing for the hardware (ESP32) voice response format.
 
-See PROTOCOL.md at the repo root for the full spec. Framing:
+See docs/PROTOCOL.md for the full spec. Framing:
 
     [4 bytes big-endian uint32: metadata_length]
     [metadata_length bytes: UTF-8 JSON metadata]

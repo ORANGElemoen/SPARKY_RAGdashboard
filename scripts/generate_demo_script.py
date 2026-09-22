@@ -214,7 +214,7 @@ para(doc, "No ESP32 hardware exists yet, so this page simulates what a physical 
 bullet(doc, "Why it matters: an embedded device has very limited RAM and CPU. Base64 encoding "
     "costs roughly 33% more bytes to transfer and real CPU time to decode - a length-prefixed "
     "binary frame format avoids both.")
-bullet(doc, "The full spec is written up in PROTOCOL.md at the repo root, so firmware can be "
+bullet(doc, "The full spec is written up in docs/PROTOCOL.md, so firmware can be "
     "developed against a fixed contract independently of the backend's own code.")
 
 section(doc, "10", "Multi-Language Support", "briefly tie back to the Translate feature")

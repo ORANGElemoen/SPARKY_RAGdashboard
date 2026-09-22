@@ -9,7 +9,7 @@ Accept header:
   - `Accept: application/x-tutor-voice`: a compact length-prefixed binary
     framing intended for hardware clients (ESP32), with the answer's audio
     streamed sentence-by-sentence so playback can start before the whole
-    answer finishes synthesizing. See PROTOCOL.md at the repo root for the
+    answer finishes synthesizing. See docs/PROTOCOL.md for the
     full wire format and core/services/audio_framing.py for the framing
     helper.
 """
@@ -110,7 +110,7 @@ async def voice_query(
     Accepts a short audio recording, transcribes it, answers it using the
     same tutor as the text endpoint, and returns the answer as speech - as
     JSON+base64 by default, or as the framed binary hardware format if the
-    request sends `Accept: application/x-tutor-voice` (see PROTOCOL.md).
+    request sends `Accept: application/x-tutor-voice` (see docs/PROTOCOL.md).
     """
     hardware_format = accept == HARDWARE_MEDIA_TYPE
     strings = load_language_strings()
@@ -207,7 +207,7 @@ async def _stream_hardware_response(
     """Build the framed binary response for a hardware client.
 
     Sentences are synthesized one at a time and each frame is written to
-    the response as soon as it's ready (see PROTOCOL.md), so a device can
+    the response as soon as it's ready (see docs/PROTOCOL.md), so a device can
     start playing the first sentence before later ones finish generating.
     """
     sentences = split_sentences(spoken_answer)

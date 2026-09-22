@@ -55,7 +55,7 @@ real ESP32 hardware ("Sparky") over local WiFi — including a branded captive
 portal for no-code WiFi onboarding — though the physical mic/amp/speaker
 circuit is still being assembled, so the hardware currently exercises the
 network/API path with a pre-recorded test file rather than a live recording.
-See [PROJECT_HANDOFF.md](PROJECT_HANDOFF.md) for the current hardware status.
+See [docs/PROJECT_HANDOFF.md](docs/PROJECT_HANDOFF.md) for the current hardware status.
 
 ## Features
 
@@ -222,10 +222,9 @@ open-source-rag-system/
 ├── deployment/requirements/
 │   ├── simple_requirements.txt    # Core dependencies
 │   └── voice_requirements.txt     # Optional: faster-whisper, piper-tts
-├── docs/                          # Project docs, API reference, Sparky hardware PDFs
+├── docs/                          # Project docs (incl. PROJECT_HANDOFF.md, PROTOCOL.md), Sparky hardware PDFs
+├── hardware/                      # SKiDL/KiCad circuit files (hardware/circuit/) + enclosure CAD exports (hardware/cad/)
 ├── scripts/                       # One-off generator/helper scripts (not part of the running app)
-├── PROJECT_HANDOFF.md             # Detailed project state / handoff notes
-├── PROTOCOL.md                    # Hardware wire protocol spec (ESP32 binary framing)
 └── simple_api.py                  # Entry point
 ```
 
@@ -235,7 +234,7 @@ ESP32 hardware bring-up ("Sparky") is underway: WiFi captive portal onboarding
 and the network/device-auth path to this backend are both working against real
 hardware. What's left is assembling the physical audio circuit (INMP441 mic,
 MAX98357A amp, speaker) and the enclosure. See
-[PROJECT_HANDOFF.md](PROJECT_HANDOFF.md) for full details on the current
+[docs/PROJECT_HANDOFF.md](docs/PROJECT_HANDOFF.md) for full details on the current
 state, recent fixes, and known rough edges.
 
 ## Contributing & Security

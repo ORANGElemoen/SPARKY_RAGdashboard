@@ -16,11 +16,17 @@ interface still works (Text Chat tab), but the voice pipeline (Voice Chat
 tab, `/api/v1/voice/query`) is now the primary feature.
 
 **For the full current state, recent bug fixes and why they mattered, and
-known rough edges, read [PROJECT_HANDOFF.md](PROJECT_HANDOFF.md) first.**
+known rough edges, read [docs/PROJECT_HANDOFF.md](docs/PROJECT_HANDOFF.md) first.**
 This file (CLAUDE.md) is the shorter, ongoing-guidance version.
 
-**Next phase (not started)**: ESP32 firmware (mic + speaker + LCD) that
-calls the same voice API over local WiFi. Hardware specifics aren't decided.
+**Hardware ("Sparky") status**: ESP32 bring-up is underway - WiFi captive
+portal onboarding and the device-auth/network path to this backend are both
+working against real hardware. The physical mic/amp/speaker circuit and
+enclosure are still being assembled; current firmware exercises the pipeline
+with a pre-recorded test file rather than a live recording. See
+`hardware/circuit/` (SKiDL/KiCad) and `hardware/cad/` (enclosure exports) for
+the physical-build artifacts, and `docs/sparky_*.pdf` for the shopping
+list/wiring/build-sequence docs.
 
 ## 🏗️ Project Structure
 
@@ -55,7 +61,11 @@ open-source-rag-system/
 ├── deployment/requirements/
 │   ├── simple_requirements.txt    # Core deps
 │   └── voice_requirements.txt     # Optional: faster-whisper, piper-tts
-├── PROJECT_HANDOFF.md             # Detailed state/handoff doc - read for full context
+├── docs/                          # API docs, PROJECT_HANDOFF/PROTOCOL, Sparky hardware PDFs, images/
+├── hardware/
+│   ├── circuit/                   # SKiDL script + generated KiCad netlist/ERC files
+│   └── cad/                       # Enclosure STL/3MF/SVG exports + inspection scripts
+├── scripts/                       # One-off generator/helper scripts (not part of the running app)
 └── simple_api.py                  # Entry point (imports core.main.main())
 ```
 
@@ -173,7 +183,7 @@ original project's "avoid import issues" comment).
   directive first (see above) before assuming it's a JS bug.
 - **Answers cut off mid-sentence**: check `max_tokens` isn't being clamped
   somewhere in `ollama_client.py`'s request options - this happened once
-  already (see PROJECT_HANDOFF.md, bug #8).
+  already (see docs/PROJECT_HANDOFF.md, bug #8).
 - **Document upload fails silently / 500s**: check the `chunks` and
   `embeddings` table column names in `core/repositories/sqlite_repository.py`
   actually match what `document_service.py` and `vector_repository.py`
@@ -181,6 +191,6 @@ original project's "avoid import issues" comment).
 
 ---
 
-**See [PROJECT_HANDOFF.md](PROJECT_HANDOFF.md) for the detailed list of
+**See [docs/PROJECT_HANDOFF.md](docs/PROJECT_HANDOFF.md) for the detailed list of
 bugs fixed this session (with root causes), known rough edges, and what to
 hand off to a fresh Claude session.**
