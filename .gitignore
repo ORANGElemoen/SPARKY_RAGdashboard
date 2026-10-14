@@ -213,3 +213,4 @@ data/voice_audition/
 .playwright-mcp/
 data/processing_queue.json
 config/learner_config.yaml
+data/voice_recordings/
