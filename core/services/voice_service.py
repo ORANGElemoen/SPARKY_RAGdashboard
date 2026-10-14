@@ -8,9 +8,10 @@ import io
 import logging
 import os
 import re
+import unicodedata
 import wave
 from pathlib import Path
-from typing import Iterator, List
+from typing import Dict, Iterator, List, Optional
 
 import yaml
 
@@ -22,8 +23,51 @@ logger = logging.getLogger(__name__)
 # correctness problem the way it would be for text display.
 _SENTENCE_SPLIT_RE = re.compile(r"(?<=[.!?])\s+")
 
+# The LLM writes chat-style text; Piper/espeak reads symbols aloud ("asterisk",
+# "slash") or makes odd sounds on them. These turn it into speakable text.
+_BOLD_RE = re.compile(r"(\*\*|__)(.+?)\1")                  # **Recipe** -> Recipe
+_ACTION_RE = re.compile(r"\*[^*\n]+\*")                     # *beep boop* -> (dropped)
+_BRACKET_RE = re.compile(r"\s*[(\[]([^()\[\]]*)[)\]]")      # "glue (PVA)" -> "glue, PVA,"
+_FRACTION_RE = re.compile(r"(?<![\w/])(\d+)/(\d+)(?![\w/])")  # 5/8, but not dates like 1/2/2026
+_SYMBOL_RE = re.compile(r"[*#_`~|>]")
+
 _whisper_model = None
 _piper_voice = None
+
+
+def clean_for_speech(text: str, strings: Optional[Dict] = None) -> str:
+    """Turn chat-formatted LLM text into something TTS reads naturally.
+
+    Language-specific words (fraction names) come from the language file's
+    speech_fractions / speech_fraction_template, so nothing spoken is
+    hardcoded here.
+    """
+    if strings is None:
+        from .simple_rag_service import load_language_strings
+        strings = load_language_strings()
+
+    text = _BOLD_RE.sub(r"\2", text)
+    text = _ACTION_RE.sub("", text)
+    text = _BRACKET_RE.sub(r", \1,", text)
+
+    fractions = strings.get("speech_fractions") or {}
+    template = strings.get("speech_fraction_template", "{numerator} / {denominator}")
+    text = _FRACTION_RE.sub(
+        lambda m: f" {fractions.get(m.group(0)) or template.format(numerator=m.group(1), denominator=m.group(2))} ",
+        text,
+    )
+
+    # Emoji: espeak reads their names ("smiling face with...")
+    text = "".join(c for c in text if unicodedata.category(c) != "So" and c not in "\u200d\ufe0f")
+    text = _SYMBOL_RE.sub("", text)
+    text = re.sub(r"(?<=[A-Za-z])/(?=[A-Za-z])", " ", text)  # and/or -> and or
+
+    # Tidy the punctuation the bracket swap leaves behind: "slime,." / "fun!,"
+    text = re.sub(r"\s*,\s*(?=[.!?,;:])", "", text)
+    text = re.sub(r"([!?])[.,]", r"\1", text)
+    text = re.sub(r"[ \t]+", " ", text)
+    text = re.sub(r" +([.!?,;:])", r"\1", text)
+    return text.strip()
 
 
 def split_sentences(text: str) -> List[str]:
@@ -33,6 +77,7 @@ def split_sentences(text: str) -> List[str]:
     compute the chunk count - needed for the hardware protocol's
     frame_count metadata field - before synthesis actually starts.
     """
+    text = clean_for_speech(text)
     sentences = [s.strip() for s in _SENTENCE_SPLIT_RE.split(text) if s.strip()]
     if sentences:
         return sentences
@@ -100,7 +145,7 @@ class VoiceService:
         voice = _get_piper_voice()
         buffer = io.BytesIO()
         with wave.open(buffer, "wb") as wav_file:
-            voice.synthesize_wav(text, wav_file)
+            voice.synthesize_wav(clean_for_speech(text), wav_file)
         return buffer.getvalue()
 
     def synthesize_sentences(self, sentences: List[str]) -> Iterator[bytes]:
