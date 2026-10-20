@@ -32,6 +32,13 @@ class LanguageSelection(BaseModel):
     language: str
 
 
+class GradeSelection(BaseModel):
+    grade: str  # "" = not set, "R", or "1".."12"
+
+
+VALID_GRADES = {"", "R"} | {str(n) for n in range(1, 13)}
+
+
 class ModelConfig(BaseModel):
     name: str
     context_length: int
@@ -107,7 +114,7 @@ async def admin_dashboard(request: Request):
     try:
         # Load current configuration
         config_path = Path("config/llm_config.yaml")
-        with open(config_path, "r") as f:
+        with open(config_path, "r", encoding="utf-8") as f:
             config = yaml.safe_load(f)
 
         current_model = config.get("default_model", "unknown")
@@ -151,7 +158,7 @@ async def get_available_models():
     """Get all available models with their configurations"""
     try:
         config_path = Path("config/llm_config.yaml")
-        with open(config_path, "r") as f:
+        with open(config_path, "r", encoding="utf-8") as f:
             config = yaml.safe_load(f)
 
         current_model = config.get("default_model")
@@ -192,7 +199,7 @@ async def switch_model(selection: ModelSelection):
         config_path = Path("config/llm_config.yaml")
 
         # Load current config
-        with open(config_path, "r") as f:
+        with open(config_path, "r", encoding="utf-8") as f:
             config = yaml.safe_load(f)
 
         # Validate model exists
@@ -218,7 +225,7 @@ async def switch_model(selection: ModelSelection):
         config["default_model"] = selection.model_key
 
         # Save updated config
-        with open(config_path, "w") as f:
+        with open(config_path, "w", encoding="utf-8") as f:
             yaml.dump(config, f, default_flow_style=False, allow_unicode=True)
 
         # Log the change
@@ -244,7 +251,7 @@ async def install_model(model_key: str):
     """Install/download a model"""
     try:
         config_path = Path("config/llm_config.yaml")
-        with open(config_path, "r") as f:
+        with open(config_path, "r", encoding="utf-8") as f:
             config = yaml.safe_load(f)
 
         if model_key not in config.get("models", {}):
@@ -283,7 +290,7 @@ async def get_system_stats():
     """Get system statistics"""
     try:
         config_path = Path("config/llm_config.yaml")
-        with open(config_path, "r") as f:
+        with open(config_path, "r", encoding="utf-8") as f:
             config = yaml.safe_load(f)
 
         # Get basic stats
@@ -344,7 +351,7 @@ async def download_config():
     """Download current configuration as backup"""
     try:
         config_path = Path("config/llm_config.yaml")
-        with open(config_path, "r") as f:
+        with open(config_path, "r", encoding="utf-8") as f:
             config_content = f.read()
 
         from fastapi.responses import Response
@@ -857,7 +864,7 @@ async def get_filter_config():
 
     # Load from file if exists, otherwise use defaults
     if config_path.exists():
-        with open(config_path, "r") as f:
+        with open(config_path, "r", encoding="utf-8") as f:
             config = yaml.safe_load(f)
         return config
     else:
@@ -874,7 +881,7 @@ async def update_filter_config(config: DocumentFilterConfig):
         config_path.parent.mkdir(exist_ok=True)
 
         # Save configuration
-        with open(config_path, "w") as f:
+        with open(config_path, "w", encoding="utf-8") as f:
             yaml.dump(config.dict(), f, default_flow_style=False, allow_unicode=True)
 
         return {"success": True, "message": "Filter configuration updated successfully"}
@@ -954,6 +961,33 @@ async def update_language_settings(selection: LanguageSelection):
         raise
     except Exception as e:
         logger.error(f"Error updating language settings: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.get("/settings/grade")
+async def get_grade_settings():
+    """Learner grade the tutor pitches its answers at ("" = not set)."""
+    from ..services.simple_rag_service import load_learner_grade
+
+    return {"grade": load_learner_grade()}
+
+
+@router.post("/settings/grade")
+async def update_grade_settings(selection: GradeSelection):
+    """Set the learner grade used in the tutor prompts (see grade_instruction)."""
+    from ..services.simple_rag_service import LEARNER_CONFIG_PATH
+
+    grade = selection.grade.strip().upper()
+    if grade not in VALID_GRADES:
+        raise HTTPException(status_code=400, detail=f"Unknown grade '{selection.grade}' (use R or 1-12)")
+    try:
+        LEARNER_CONFIG_PATH.parent.mkdir(exist_ok=True)
+        with open(LEARNER_CONFIG_PATH, "w", encoding="utf-8") as f:
+            yaml.dump({"grade": grade}, f, default_flow_style=False)
+        logger.info(f"Learner grade set to: {grade or 'not set'}")
+        return {"success": True, "message": f"Grade set to {grade}" if grade else "Grade cleared"}
+    except Exception as e:
+        logger.error(f"Error updating grade settings: {e}")
         raise HTTPException(status_code=500, detail=str(e))
 
 
@@ -1135,7 +1169,7 @@ async def get_database_config():
     config_path = Path("config/database_config.yaml")
 
     if config_path.exists():
-        with open(config_path, "r") as f:
+        with open(config_path, "r", encoding="utf-8") as f:
             config = yaml.safe_load(f)
         return config
     else:
@@ -1161,7 +1195,7 @@ async def update_database_config(config: DatabaseConfig):
                 config.connection_string = f"mysql+pymysql://{config.username}:{config.password}@{config.host}:{config.port}/{config.database}"
 
         # Save configuration
-        with open(config_path, "w") as f:
+        with open(config_path, "w", encoding="utf-8") as f:
             yaml.dump(config.dict(), f, default_flow_style=False, allow_unicode=True)
 
         return {

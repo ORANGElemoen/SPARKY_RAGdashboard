@@ -97,7 +97,7 @@ class OllamaClient:
             else:
                 config_path = Path("./config/llm_config.yaml")
 
-            with open(config_path, "r") as f:
+            with open(config_path, "r", encoding="utf-8") as f:
                 llm_config = yaml.safe_load(f)
 
             default_model_key = llm_config.get("default_model", "tinyllama")
@@ -464,6 +464,7 @@ class OllamaClient:
                         "stop": ["\n\nHuman:", "\n\nQuestion:", "\n\nUser:"],
                     },
                     stream=False,
+                    think=False,  # spoken answers: no hidden reasoning (Qwen 3.x thinks by default)
                 )
 
                 answer = response.get("response", "").strip()
@@ -518,6 +519,9 @@ class OllamaClient:
                         "stop": ["\n\nHuman:", "\n\nQuestion:", "\n\nUser:"],
                     },
                     "stream": False,
+                    # Spoken answers: no hidden reasoning. Thinking models (Qwen 3.x)
+                    # otherwise spend the whole token budget thinking and return "".
+                    "think": False,
                 }
 
                 response = requests.post(

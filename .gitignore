@@ -203,3 +203,15 @@ logs/
 # OS
 .DS_Store
 Thumbs.db
+
+# Isolated TTS experiment venv + benchmark output
+.venv-*/
+data/tts_bench/
+data/voice_audition/
+
+# Runtime state written by the app / tooling
+.playwright-mcp/
+data/processing_queue.json
+config/learner_config.yaml
+data/voice_recordings/
+data/studio/

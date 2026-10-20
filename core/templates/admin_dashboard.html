@@ -216,6 +216,7 @@
                 <a href="/admin/documents/management"><svg class="icon"><use href="#icon-folder"/></svg> Document Management</a>
                 <a href="/admin/interaction-log/view"><svg class="icon"><use href="#icon-message"/></svg> Interaction Log</a>
                 <a href="/admin/devices/view"><svg class="icon"><use href="#icon-cpu"/></svg> Devices</a>
+                <a href="/admin/studio/view"><svg class="icon"><use href="#icon-sparkle"/></svg> Sparky Studio</a>
                 <a href="/admin/diagnostics/view"><svg class="icon"><use href="#icon-activity"/></svg> Diagnostics</a>
                 <a href="/admin/protocol-test/view"><svg class="icon"><use href="#icon-flask"/></svg> Protocol Test</a>
                 <a href="/"><svg class="icon"><use href="#icon-home"/></svg> Main UI</a>
@@ -267,6 +268,22 @@
                 <div style="display: flex; gap: 10px; align-items: center;">
                     <select id="language-select" class="form-input" style="padding: 8px 12px; border-radius: 6px; border: 1px solid #ddd;"></select>
                     <button class="btn btn-primary" onclick="saveLanguage()">Save</button>
+                </div>
+                <p style="margin: 20px 0 10px; color: #666;">
+                    Learner grade: Sparky pitches its explanations at this level.
+                </p>
+                <div style="display: flex; gap: 10px; align-items: center;">
+                    <select id="grade-select" class="form-input" style="padding: 8px 12px; border-radius: 6px; border: 1px solid #ddd;">
+                        <option value="">Not set (general, child-friendly)</option>
+                        <option value="R">Grade R</option>
+                        <option value="1">Grade 1</option><option value="2">Grade 2</option>
+                        <option value="3">Grade 3</option><option value="4">Grade 4</option>
+                        <option value="5">Grade 5</option><option value="6">Grade 6</option>
+                        <option value="7">Grade 7</option><option value="8">Grade 8</option>
+                        <option value="9">Grade 9</option><option value="10">Grade 10</option>
+                        <option value="11">Grade 11</option><option value="12">Grade 12</option>
+                    </select>
+                    <button class="btn btn-primary" onclick="saveGrade()">Save</button>
                 </div>
             </div>
 
@@ -584,10 +601,48 @@
             }
         }
 
+        async function loadGradeSettings() {
+            try {
+                const response = await fetch('/admin/settings/grade');
+                const data = await response.json();
+                document.getElementById('grade-select').value = data.grade || '';
+            } catch (error) {
+                showAlert(`Error loading grade setting: ${error.message}`, 'danger');
+            }
+        }
+
+        async function saveGrade() {
+            if (isProcessing) return;
+
+            const grade = document.getElementById('grade-select').value;
+            showLoading();
+
+            try {
+                const csrfToken = await getCsrfToken();
+                const response = await fetch('/admin/settings/grade', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                        'X-CSRF-Token': csrfToken
+                    },
+                    body: JSON.stringify({ grade })
+                });
+
+                const result = await response.json();
+                showAlert(result.message || result.detail || 'Failed to update grade',
+                          result.success ? 'success' : 'danger');
+            } catch (error) {
+                showAlert(`Error saving grade: ${error.message}`, 'danger');
+            } finally {
+                hideLoading();
+            }
+        }
+
         // Initialize page
         document.addEventListener('DOMContentLoaded', function() {
             showAlert('Admin interface loaded.', 'success');
             loadLanguageSettings();
+            loadGradeSettings();
         });
     </script>
 </body>

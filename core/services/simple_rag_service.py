@@ -6,12 +6,14 @@ Clean, maintainable RAG system with AI answers only
 import asyncio
 import logging
 import os
+import re
 from datetime import datetime
 from pathlib import Path
 from typing import Any, Dict, List, Optional
 
 import yaml
 
+from .maths_helper import maths_note
 from .response_cache import ResponseCache
 
 logger = logging.getLogger(__name__)
@@ -19,6 +21,9 @@ logger = logging.getLogger(__name__)
 DEFAULT_LANGUAGE_STRINGS = {
     "name": "English",
     "prompt_template": (
+        "Your name is Sparky, a friendly little robot. For any experiment or "
+        "activity, always tell the child to do it with a grown-up, and never "
+        "suggest eating or tasting anything used in an experiment. "
         "You are a friendly, encouraging STEM tutor for children. Use the documents "
         "below to help answer the question in a simple, fun, and engaging way, with "
         "everyday examples a child can relate to. If the documents don't fully cover "
@@ -28,6 +33,9 @@ DEFAULT_LANGUAGE_STRINGS = {
         "ANSWER (simple, fun, and encouraging, for a child):"
     ),
     "general_prompt_template": (
+        "Your name is Sparky, a friendly little robot. For any experiment or "
+        "activity, always tell the child to do it with a grown-up, and never "
+        "suggest eating or tasting anything used in an experiment. "
         "You are a friendly, encouraging STEM tutor for children. Answer the "
         "question in a simple, fun, and engaging way using your own knowledge. "
         "Explain science, technology, engineering, mathematics, biology, or "
@@ -45,7 +53,24 @@ DEFAULT_LANGUAGE_STRINGS = {
     "truncated_notice": "[...truncated for performance...]",
     "conversation_history_label": "CONVERSATION SO FAR",
     "conversation_learner_label": "Learner",
-    "conversation_tutor_label": "Tutor",
+    "conversation_tutor_label": "Sparky",
+    "speech_fractions": {
+        "1/2": "one half", "1/3": "one third", "2/3": "two thirds",
+        "1/4": "a quarter", "3/4": "three quarters",
+    },
+    "speech_fraction_template": "{numerator} over {denominator}",
+    "grade_instruction": (
+        "The child is in Grade {grade}, about {age} years old. Use words, ideas and "
+        "examples a child of that age knows: keep it very simple for young children, "
+        "and go deeper with proper science words for older ones. Do not mention their "
+        "grade or age."
+    ),
+    "refusal_pattern": r"I (cannot|can't|can not|won't|am not able to|'m not able to) (provide|help(?! but)|assist|give|offer|share|answer|fulfil)",
+    "safety_redirect": (
+        "That sounds like something that could be really dangerous, so please don't "
+        "try it, and talk to a grown-up you trust about it. There's lots of exciting "
+        "science we can explore safely together. What else are you curious about?"
+    ),
 }
 
 
@@ -87,6 +112,44 @@ def load_language_strings() -> Dict[str, str]:
     return defaults
 
 
+LEARNER_CONFIG_PATH = Path("config/learner_config.yaml")
+
+
+def load_learner_grade() -> str:
+    """Learner grade set in the admin dashboard ("R", "1".."12"), or "" if unset."""
+    try:
+        if LEARNER_CONFIG_PATH.exists():
+            with open(LEARNER_CONFIG_PATH, "r", encoding="utf-8") as f:
+                return str((yaml.safe_load(f) or {}).get("grade") or "")
+    except Exception as e:
+        logger.warning(f"Failed to read learner config, ignoring grade: {e}")
+    return ""
+
+
+def grade_instruction(strings: Dict[str, str]) -> str:
+    """The language file's grade sentence for the configured grade, or ""."""
+    grade = load_learner_grade()
+    if not (grade.upper() == "R" or grade.isdigit()):
+        return ""  # unset, or a hand-edited config value we can't use
+    age = 5 if grade.upper() == "R" else int(grade) + 6  # Grade R is the year children turn 6
+    return strings.get("grade_instruction", "").format(grade=grade, age=age)
+
+
+def _soften_refusal(text: str, strings: Dict[str, str]) -> str:
+    """Replace the LLM's canned safety refusal with a warm, kid-friendly one.
+
+    llama3.2's built-in safety training answers some risky questions with a
+    flat "I cannot provide information on..." that the prompt can't override.
+    Sparky shouldn't just refuse (see CLAUDE.md), so swap in the language
+    file's safety_redirect. The English pattern is always checked too, since
+    the model often refuses in English whatever the prompt language.
+    """
+    for pattern in {strings.get("refusal_pattern"), DEFAULT_LANGUAGE_STRINGS["refusal_pattern"]}:
+        if pattern and re.match(pattern, text.strip(), re.IGNORECASE):
+            return strings["safety_redirect"]
+    return text
+
+
 _SENTENCE_END_CHARS = ".!?…\"'”)"
 
 
@@ -114,7 +177,7 @@ class RAGConfig:
 
     def __init__(self):
         # Core settings - simple and clear
-        self.similarity_threshold = float(os.getenv("RAG_SIMILARITY_THRESHOLD", "0.3"))
+        self.similarity_threshold = float(os.getenv("RAG_SIMILARITY_THRESHOLD", "0.45"))
         self.max_results = int(os.getenv("RAG_MAX_RESULTS", "3"))
         self.require_sources = bool(
             os.getenv("RAG_REQUIRE_SOURCES", "true").lower() == "true"
@@ -123,7 +186,7 @@ class RAGConfig:
         # Follow-up questions ("how does that work?") pull in this many
         # prior turns from the same session as extra prompt context
         self.max_conversation_turns = int(
-            os.getenv("RAG_MAX_CONVERSATION_TURNS", "4")
+            os.getenv("RAG_MAX_CONVERSATION_TURNS", "3")
         )
 
         logger.info(
@@ -174,16 +237,16 @@ class SimpleRAGService:
             if not self._is_valid_query(query):
                 return self._error_response("Invalid query")
 
-            # 2. Search for relevant documents
-            search_results = await self._search_documents(query)
-
-            # 3. Pull in recent turns from this same session only, so
+            # 2. Pull in recent turns from this same session only, so
             # follow-ups like "how does that work?" resolve correctly
             conversation_history = []
             if session_id and self.interaction_log_repo:
                 conversation_history = await self.interaction_log_repo.get_recent_turns(
                     session_id, limit=self.config.max_conversation_turns
                 )
+
+            # 3. Search for relevant documents
+            search_results = await self._search_documents(query)
 
             # 4. Generate AI answer (grounded in documents if any were found,
             # otherwise the tutor falls back to its own general knowledge)
@@ -255,13 +318,16 @@ class SimpleRAGService:
         if not turns:
             return ""
 
-        max_answer_chars = 300
+        # Keep the start (the topic) AND the end: Sparky's answers end with a
+        # question for the child, and cutting it off made follow-up answers
+        # like "a zebra!" meaningless to the model.
+        max_answer_chars, keep_head, keep_tail = 700, 250, 400
         sources_marker = f"\n\n{strings['sources_label']}:"
         lines = [f"{strings['conversation_history_label']}:"]
         for turn in turns:
             answer = turn["answer_text"].split(sources_marker)[0]
             if len(answer) > max_answer_chars:
-                answer = answer[:max_answer_chars] + strings["truncated_notice"]
+                answer = answer[:keep_head] + strings["truncated_notice"] + answer[-keep_tail:]
             lines.append(f"{strings['conversation_learner_label']}: {turn['question_text']}")
             lines.append(f"{strings['conversation_tutor_label']}: {answer}")
 
@@ -269,7 +335,9 @@ class SimpleRAGService:
 
     def _is_valid_query(self, query: str) -> bool:
         """Simple query validation"""
-        if not query or len(query.strip()) < 3:
+        # Any non-empty text is valid: children answer Sparky's own questions
+        # with "No", "8" or "Ja", which a minimum length would reject.
+        if not query or not query.strip():
             return False
         if len(query) > self.config.max_query_length:
             return False
@@ -323,6 +391,16 @@ class SimpleRAGService:
         """Generate AI answer from search results"""
         strings = load_language_strings()
         try:
+            # Small models get arithmetic wrong, so any sum in the message is
+            # worked out exactly here and given to the model to explain.
+            try:
+                previous = conversation_history[-1]["question_text"] if conversation_history else None
+                note = maths_note(query, previous, strings)
+            except Exception as e:
+                logger.warning(f"Maths helper failed, answering without it: {e}")
+                note = ""
+            query = f"{query}\n{note}" if note else query
+
             if not search_results:
                 # No relevant documents: fall back to the tutor's own
                 # general knowledge instead of refusing to answer
@@ -365,21 +443,23 @@ class SimpleRAGService:
                 conversation_history or [], strings
             )
 
-            # Conversation history and the active response language are both
-            # part of the cache key (via `extra`) so a hit can never return
-            # an answer generated for a different conversation state, or in
-            # a different language than the one currently configured - see
-            # ResponseCache._get_cache_key.
-            cache_extra = f"{strings['_language_code']}|{history_block}"
-            cached_response = self.cache.get(query, context, extra=cache_extra)
-            if cached_response:
-                return cached_response
-
             logger.debug(f"Context for prompt: {context[:800]}...")
 
             prompt = strings["prompt_template"].format(
-                context=context, query=query, conversation_history=history_block
+                context=context,
+                query=query,
+                conversation_history=history_block,
+                grade_instruction=grade_instruction(strings),
             )
+
+            # Cache on the full prompt plus the model, so a hit can never
+            # return an answer made for a different conversation, language,
+            # grade, prompt wording or model (switching models in the admin
+            # dashboard used to keep serving the old model's answers).
+            model = getattr(self.llm_client, "model", "")
+            cached_response = self.cache.get(prompt, "", extra=model)
+            if cached_response:
+                return cached_response
 
             response = await asyncio.to_thread(
                 self.llm_client.generate_answer,
@@ -392,7 +472,7 @@ class SimpleRAGService:
             )
 
             answer_text = response if response else strings["no_answer_generated"]
-            answer_text = _trim_to_complete_sentence(answer_text)
+            answer_text = _soften_refusal(_trim_to_complete_sentence(answer_text), strings)
             spoken_text = answer_text  # Citations below are for display, not speech
 
             # Add source footer - only when an answer was actually generated,
@@ -427,7 +507,7 @@ class SimpleRAGService:
             # future learner who hits the same query/context for up to the
             # cache's TTL, even after the LLM recovers from a transient failure.
             if response:
-                self.cache.set(query, context, result, extra=cache_extra)
+                self.cache.set(prompt, "", result, extra=model)
 
             return result
 
@@ -453,7 +533,9 @@ class SimpleRAGService:
                 conversation_history or [], strings
             )
             prompt = strings["general_prompt_template"].format(
-                query=query, conversation_history=history_block
+                query=query,
+                conversation_history=history_block,
+                grade_instruction=grade_instruction(strings),
             )
 
             response = await asyncio.to_thread(
@@ -467,7 +549,7 @@ class SimpleRAGService:
             )
 
             answer_text = response if response else strings["no_answer_generated"]
-            answer_text = _trim_to_complete_sentence(answer_text)
+            answer_text = _soften_refusal(_trim_to_complete_sentence(answer_text), strings)
 
             return {
                 "text": answer_text,
