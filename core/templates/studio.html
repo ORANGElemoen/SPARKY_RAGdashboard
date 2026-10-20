@@ -1,0 +1,346 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Sparky Studio - Sparky Admin</title>
+    <link rel="icon" type="image/png" href="/static/images/sparky/icon.png">
+    <link rel="stylesheet" href="/static/theme.css">
+    <style>
+        body { padding: var(--space-6); }
+        .admin-container { max-width: 1240px; margin: 0 auto; background: var(--color-surface); border-radius: var(--radius-xl); box-shadow: var(--shadow-lg); overflow: hidden; }
+        .admin-header { background: linear-gradient(160deg, var(--color-ink) 0%, var(--color-ink-soft) 100%); color: white; padding: var(--space-8) var(--space-8) var(--space-6); text-align: center; position: relative; overflow: hidden; }
+        .admin-header::before { content: ""; position: absolute; inset: 0; background: radial-gradient(60% 90% at 50% -10%, rgba(245, 130, 31, 0.35), transparent 70%); pointer-events: none; }
+        .admin-header h1 { display: inline-flex; align-items: center; gap: var(--space-3); font-size: var(--text-2xl); margin-bottom: var(--space-2); position: relative; }
+        .admin-header h1 .icon { color: var(--color-brand-blue); }
+        .admin-header p { opacity: 0.75; font-size: var(--text-sm); position: relative; }
+        .nav-links { margin-top: var(--space-5); display: flex; gap: var(--space-2); justify-content: center; position: relative; flex-wrap: wrap; }
+        .nav-links a { display: inline-flex; align-items: center; gap: var(--space-2); background: rgba(255,255,255,0.08); border: 1px solid var(--color-ink-border); color: white; padding: 9px 16px; border-radius: var(--radius-full); text-decoration: none; font-size: var(--text-sm); font-weight: var(--font-medium); }
+        .nav-links a:hover { background: rgba(255,255,255,0.16); color: white; }
+        .admin-content { padding: var(--space-4) var(--space-8) var(--space-8); }
+        .studio-section { padding: var(--space-6) 0; }
+        .studio-section + .studio-section { border-top: 1px solid var(--color-border); }
+        .studio-section h2 { font-size: var(--text-lg); margin: 0 0 var(--space-1); }
+        .studio-section .hint { color: var(--color-text-tertiary); font-size: var(--text-sm); margin: 0 0 var(--space-4); }
+        .face-grid { display: grid; grid-template-columns: minmax(280px, 380px) 1fr; gap: var(--space-6); align-items: start; }
+        @media (max-width: 900px) { .face-grid { grid-template-columns: 1fr; } }
+        #preview { width: 100%; height: auto; border-radius: var(--radius-md); background: #0f172a; display: block; }
+        #editor { width: 100%; height: auto; display: block; border-radius: var(--radius-md); background: #020617; cursor: crosshair; touch-action: none; }
+        .row { display: flex; gap: var(--space-2); flex-wrap: wrap; align-items: center; margin-top: var(--space-3); }
+        .row .input { flex: 1; min-width: 180px; width: auto; }
+        .bits { font-family: Consolas, monospace; font-size: var(--text-sm); color: var(--color-text-secondary); min-height: 1.5em; margin-top: var(--space-2); }
+        .library { display: grid; grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)); gap: var(--space-3); margin-top: var(--space-4); }
+        .thumb { border: 2px solid transparent; border-radius: var(--radius-md); padding: var(--space-2); background: var(--color-surface-alt); cursor: pointer; text-align: center; font-size: var(--text-xs); }
+        .thumb.selected { border-color: var(--color-brand-blue); }
+        .thumb canvas { width: 100%; height: auto; display: block; border-radius: var(--radius-sm); margin-bottom: var(--space-1); }
+        table { width: 100%; border-collapse: collapse; }
+        th, td { text-align: left; padding: var(--space-2) var(--space-3); font-size: var(--text-sm); border-bottom: 1px solid var(--color-border); vertical-align: middle; }
+        th { color: var(--color-text-tertiary); font-weight: var(--font-medium); text-transform: uppercase; font-size: var(--text-xs); letter-spacing: 0.04em; }
+        td canvas { width: 120px; height: auto; display: block; border-radius: var(--radius-sm); }
+        td select { min-width: 200px; }
+        audio { height: 32px; max-width: 230px; }
+        textarea.input { width: 100%; min-height: 64px; resize: vertical; }
+        .meter { height: 10px; border-radius: var(--radius-full); background: var(--color-surface-alt); border: 1px solid var(--color-border); overflow: hidden; margin-top: var(--space-2); }
+        .meter > div { height: 100%; background: var(--color-brand-blue); width: 0; }
+        .msg { font-size: var(--text-sm); min-height: 1.4em; margin-top: var(--space-2); }
+        .msg.ok { color: var(--color-success); } .msg.bad { color: var(--color-danger); }
+        .muted { color: var(--color-text-tertiary); font-size: var(--text-sm); }
+        ol.steps { margin: var(--space-2) 0 0 var(--space-5); color: var(--color-text-secondary); font-size: var(--text-sm); }
+    </style>
+</head>
+<body>
+    <svg style="display:none" aria-hidden="true">
+      <symbol id="icon-sparkle" viewBox="0 0 24 24"><path d="M12 3l1.8 5.2L19 10l-5.2 1.8L12 17l-1.8-5.2L5 10l5.2-1.8L12 3z"/></symbol>
+      <symbol id="icon-settings" viewBox="0 0 24 24"><circle cx="12" cy="12" r="3"/><path d="M12 2v3M12 19v3M4.2 4.2l2.1 2.1M17.7 17.7l2.1 2.1M2 12h3M19 12h3M4.2 19.8l2.1-2.1M17.7 6.3l2.1-2.1"/></symbol>
+      <symbol id="icon-cpu" viewBox="0 0 24 24"><rect x="6" y="6" width="12" height="12" rx="2"/><line x1="9" y1="2" x2="9" y2="6"/><line x1="15" y1="2" x2="15" y2="6"/><line x1="9" y1="18" x2="9" y2="22"/><line x1="15" y1="18" x2="15" y2="22"/></symbol>
+      <symbol id="icon-home" viewBox="0 0 24 24"><path d="M4 11.5 12 4l8 7.5"/><path d="M6 10v9a1 1 0 0 0 1 1h4v-6h2v6h4a1 1 0 0 0 1-1v-9"/></symbol>
+    </svg>
+
+    <div class="admin-container">
+        <div class="admin-header">
+            <h1><svg class="icon"><use href="#icon-sparkle"/></svg> Sparky Studio</h1>
+            <p>Design Sparky's faces and voice lines, then send them to the ESP32</p>
+            <div class="nav-links">
+                <a href="/admin/devices/view"><svg class="icon"><use href="#icon-cpu"/></svg> Devices</a>
+                <a href="/admin/"><svg class="icon"><use href="#icon-settings"/></svg> Admin Home</a>
+                <a href="/"><svg class="icon"><use href="#icon-home"/></svg> Main UI</a>
+            </div>
+        </div>
+
+        <div class="admin-content">
+            <!-- ============ faces ============ -->
+            <section class="studio-section">
+                <h2>1. Faces</h2>
+                <p class="hint">Click or drag on the dark grid to switch LEDs on and off. Each face is 32 LEDs wide and 8 tall - the same as Sparky's LED matrix.</p>
+                <div class="face-grid">
+                    <div>
+                        <canvas id="preview" width="760" height="560" aria-label="Sparky preview"></canvas>
+                        <div class="muted" style="margin-top:6px">Preview: how the face looks on Sparky</div>
+                    </div>
+                    <div>
+                        <canvas id="editor" width="960" height="240" aria-label="Face editor grid"></canvas>
+                        <div class="bits" id="bits">Hover over a column to see how Sparky stores it in binary.</div>
+                        <div class="row">
+                            <input id="faceName" class="input" maxlength="40" placeholder="Face name, e.g. 'Excited'">
+                            <button id="saveFace" class="btn btn-primary">Save face</button>
+                        </div>
+                        <div class="row">
+                            <button id="clearFace" class="btn btn-secondary">Clear</button>
+                            <button id="invertFace" class="btn btn-secondary">Invert</button>
+                            <button id="mirrorFace" class="btn btn-secondary">Copy left eye to right</button>
+                            <button id="deleteFace" class="btn btn-secondary">Delete face</button>
+                        </div>
+                        <div class="msg" id="faceMsg"></div>
+                    </div>
+                </div>
+                <div class="library" id="library"></div>
+                <div class="row">
+                    <button id="importBtn" class="btn btn-secondary">Import faces from the 3D viewer (.json)</button>
+                    <input id="importFile" type="file" accept=".json,application/json" hidden>
+                    <a class="btn btn-secondary" href="/admin/studio/faces/export">Download faces (.json)</a>
+                </div>
+            </section>
+
+            <!-- ============ moods ============ -->
+            <section class="studio-section">
+                <h2>2. Which face for which mood?</h2>
+                <p class="hint">Sparky changes face depending on what he is doing. Pick a face for each moment.</p>
+                <table>
+                    <thead><tr><th>Mood</th><th>When it shows</th><th>Face</th><th>Preview</th></tr></thead>
+                    <tbody id="moods"></tbody>
+                </table>
+                <div class="msg" id="moodMsg"></div>
+            </section>
+
+            <!-- ============ voice lines ============ -->
+            <section class="studio-section">
+                <h2>3. Voice lines</h2>
+                <p class="hint">Type something and Sparky says it in his own voice. These are short clips the ESP32 keeps and plays straight away - for example while it waits for an answer.</p>
+                <textarea id="lineText" class="input" maxlength="200" placeholder="Hmm, let me think about that!"></textarea>
+                <div class="row">
+                    <label class="muted">Plays: <select id="lineTrigger" class="input"></select></label>
+                    <label class="muted">Face: <select id="lineMood" class="input"></select></label>
+                    <button id="makeLine" class="btn btn-primary">Make Sparky say it</button>
+                </div>
+                <div class="msg" id="lineMsg"></div>
+                <table style="margin-top:var(--space-4)">
+                    <thead><tr><th>Line</th><th>Plays</th><th>Face</th><th>Length</th><th>Listen</th><th></th></tr></thead>
+                    <tbody id="lines"></tbody>
+                </table>
+                <div class="muted" style="margin-top:var(--space-3)" id="flashText"></div>
+                <div class="meter"><div id="flashBar"></div></div>
+            </section>
+
+            <!-- ============ export ============ -->
+            <section class="studio-section">
+                <h2>4. Send it to Sparky</h2>
+                <p class="hint">For now, faces go into the firmware when you upload it to the ESP32. Wi-Fi updates come later.</p>
+                <div class="row">
+                    <a class="btn btn-primary" href="/admin/studio/export/sparky_faces.h">Download sparky_faces.h</a>
+                    <a class="btn btn-secondary" href="/admin/studio/export/voice_lines.zip">Download voice lines (.zip)</a>
+                </div>
+                <ol class="steps">
+                    <li>Put <code>sparky_faces.h</code> in the same folder as the Sparky Arduino sketch.</li>
+                    <li>Add <code>#include "sparky_faces.h"</code> at the top of the sketch.</li>
+                    <li>Show a mood with <code>sparkyDrawFace(mx, SPARKY_MOOD_FACES[SPARKY_MOOD_HAPPY]);</code></li>
+                    <li>Upload to the ESP32. If a face appears mirrored, change <code>SPARKY_FLIP_X</code> at the top of the file.</li>
+                </ol>
+            </section>
+        </div>
+    </div>
+
+<script>
+const $ = (id) => document.getElementById(id);
+function h(tag, props = {}, ...kids) {  // DOM builder: text always goes in as text, never as HTML
+    const e = document.createElement(tag);
+    for (const [k, v] of Object.entries(props)) {
+        if (k === 'class') e.className = v; else if (k.startsWith('data-')) e.setAttribute(k, v); else e[k] = v;
+    }
+    for (const c of kids) e.append(c instanceof Node ? c : document.createTextNode(String(c)));
+    return e;
+}
+async function getCsrfToken() {
+    const response = await fetch('/api/v1/csrf-token');
+    const data = await response.json();
+    return data.csrf_token;
+}
+async function api(method, url, body) {
+    const opts = {method, headers: {}};
+    if (method !== 'GET') opts.headers['X-CSRF-Token'] = await getCsrfToken();
+    if (body !== undefined) { opts.headers['Content-Type'] = 'application/json'; opts.body = JSON.stringify(body); }
+    const res = await fetch(url, opts);
+    const data = await res.json().catch(() => ({}));
+    if (!res.ok) throw new Error(data.detail || `HTTP ${res.status}`);
+    return data;
+}
+const say = (id, text, cls = '') => { $(id).className = 'msg ' + cls; $(id).textContent = text; };
+
+const MOOD_INFO = {
+    idle: 'Waiting - nobody is talking to him', listening: 'Button held down - recording the child',
+    thinking: 'Waiting for the answer from the tutor', talking: 'Speaking the answer out loud',
+    happy: 'Praise, or a correct answer', error: 'Something went wrong (Wi-Fi or server)',
+};
+const BLANK = Array(8).fill('.'.repeat(32));
+let S = null, rows = BLANK.slice(), current = null;
+
+// ---------------- drawing ----------------
+function drawLeds(g, x, y, w, hgt, faceRows, glow) {
+    const pitch = w / 32, r = pitch * 0.36;
+    for (let row = 0; row < 8; row++) for (let c = 0; c < 32; c++) {
+        const on = faceRows[row][c] === '#';
+        g.beginPath(); g.arc(x + (c + 0.5) * pitch, y + (row + 0.5) * (hgt / 8), r, 0, Math.PI * 2);
+        g.fillStyle = on ? '#7cc4ff' : '#111a28';
+        g.shadowColor = on && glow ? 'rgba(70,150,255,0.95)' : 'transparent';
+        g.shadowBlur = on && glow ? pitch * 0.9 : 0;
+        g.fill();
+    }
+    g.shadowBlur = 0;
+}
+function roundRect(g, x, y, w, hgt, r) {
+    g.beginPath(); g.moveTo(x + r, y); g.arcTo(x + w, y, x + w, y + hgt, r); g.arcTo(x + w, y + hgt, x, y + hgt, r);
+    g.arcTo(x, y + hgt, x, y, r); g.arcTo(x, y, x + w, y, r); g.closePath();
+}
+function drawPreview() {  // Sparky's head and shoulders, drawn to scale from the CAD (164 mm head)
+    const cv = $('preview'), g = cv.getContext('2d'), s = cv.width / 210;
+    g.fillStyle = '#0f172a'; g.fillRect(0, 0, cv.width, cv.height);
+    const cx = cv.width / 2;
+    g.fillStyle = '#5f97c4'; roundRect(g, cx - 65 * s, 125 * s, 130 * s, 80 * s, 15 * s); g.fill();     // body
+    g.fillStyle = '#6aa6d4'; roundRect(g, cx - 82 * s, 18 * s, 164 * s, 110 * s, 45 * s); g.fill();      // head
+    g.fillStyle = '#2563eb'; roundRect(g, cx - 15 * s, 10 * s, 30 * s, 9 * s, 4 * s); g.fill();           // button
+    g.fillStyle = '#05070c'; roundRect(g, cx - 66 * s, 35 * s, 132 * s, 76 * s, 26 * s); g.fill();        // black screen
+    g.fillStyle = '#1e293b'; g.beginPath(); g.arc(cx, 26 * s, 1.4 * s, 0, Math.PI * 2); g.fill();         // mic hole
+    drawLeds(g, cx - 63 * s, 58 * s, 126 * s, 30 * s, rows, true);
+}
+function drawEditor() {
+    const cv = $('editor'), g = cv.getContext('2d');
+    g.fillStyle = '#020617'; g.fillRect(0, 0, cv.width, cv.height);
+    drawLeds(g, 0, 0, cv.width, cv.height, rows, false);
+    g.strokeStyle = '#334155'; g.lineWidth = 2;
+    for (let b = 1; b < 4; b++) { g.beginPath(); g.moveTo(b * cv.width / 4, 0); g.lineTo(b * cv.width / 4, cv.height); g.stroke(); }
+}
+function thumb(faceRows, width = 300) {
+    const cv = h('canvas', {width, height: Math.round(width / 4)}), g = cv.getContext('2d');
+    g.fillStyle = '#05070c'; g.fillRect(0, 0, cv.width, cv.height);
+    drawLeds(g, 0, 0, cv.width, cv.height, faceRows, true);
+    return cv;
+}
+function show(faceRows) { rows = faceRows.slice(); drawEditor(); drawPreview(); }
+
+// ---------------- editor input ----------------
+let paint = null;
+function cellAt(e) {
+    const r = $('editor').getBoundingClientRect();
+    return [Math.floor((e.clientY - r.top) / (r.height / 8)), Math.floor((e.clientX - r.left) / (r.width / 32))];
+}
+function setCell(row, col, on) {
+    if (row < 0 || row > 7 || col < 0 || col > 31) return;
+    rows = rows.slice(); rows[row] = rows[row].slice(0, col) + (on ? '#' : '.') + rows[row].slice(col + 1);
+    show(rows);
+}
+function showBits(col) {
+    if (col < 0 || col > 31) return;
+    const bits = rows.map(r => r[col] === '#' ? '1' : '0').join('');
+    $('bits').textContent = `Column ${col + 1}: ${bits.split('').join(' ')}  =  ${parseInt(bits, 2)} in decimal  (1 = LED on)`;
+}
+$('editor').addEventListener('pointerdown', e => { const [r, c] = cellAt(e); paint = rows[r][c] !== '#'; setCell(r, c, paint); $('editor').setPointerCapture(e.pointerId); });
+$('editor').addEventListener('pointermove', e => {
+    const [r, c] = cellAt(e); showBits(c);
+    if (paint !== null && rows[r] && (rows[r][c] === '#') !== paint) setCell(r, c, paint);
+});
+$('editor').addEventListener('pointerup', () => { paint = null; });
+$('clearFace').onclick = () => show(BLANK);
+$('invertFace').onclick = () => show(rows.map(r => [...r].map(ch => ch === '#' ? '.' : '#').join('')));
+$('mirrorFace').onclick = () => show(rows.map(r => r.slice(0, 16) + [...r.slice(0, 16)].reverse().join('')));
+
+// ---------------- library ----------------
+function select(name) {
+    current = name; $('faceName').value = name; show(S.faces[name]);
+    document.querySelectorAll('.thumb').forEach(t => t.classList.toggle('selected', t.dataset.name === name));
+    say('faceMsg', '');
+}
+function renderLibrary() {
+    const lib = $('library'); lib.replaceChildren();
+    for (const [name, faceRows] of Object.entries(S.faces)) {
+        const t = h('div', {class: 'thumb', 'data-name': name, title: 'Edit ' + name}, thumb(faceRows), name);
+        t.onclick = () => select(name);
+        if (name === current) t.classList.add('selected');
+        lib.append(t);
+    }
+}
+function renderMoods() {
+    const body = $('moods'); body.replaceChildren();
+    for (const mood of S.mood_names) {
+        const sel = h('select', {class: 'input'});
+        for (const name of Object.keys(S.faces)) sel.append(h('option', {value: name, selected: S.moods[mood] === name}, name));
+        sel.onchange = async () => {
+            try { S = await api('PUT', '/admin/studio/moods', {[mood]: sel.value}); renderAll(); say('moodMsg', `${mood} now shows "${sel.value}".`, 'ok'); }
+            catch (e) { say('moodMsg', e.message, 'bad'); }
+        };
+        body.append(h('tr', {}, h('td', {}, h('b', {}, mood)), h('td', {class: 'muted'}, MOOD_INFO[mood] || ''), h('td', {}, sel), h('td', {}, thumb(S.faces[S.moods[mood]], 240))));
+    }
+}
+function renderLines() {
+    $('lineTrigger').replaceChildren(...Object.entries(S.triggers).map(([k, v]) => h('option', {value: k, title: v}, k.replace('_', ' '))));
+    $('lineMood').replaceChildren(...S.mood_names.map(m => h('option', {value: m, selected: m === 'thinking'}, m)));
+    const body = $('lines'); body.replaceChildren();
+    if (!S.voice_lines.length) body.append(h('tr', {}, h('td', {colSpan: 6, class: 'muted'}, 'No voice lines yet - type one above.')));
+    for (const line of S.voice_lines) {
+        const del = h('button', {class: 'btn btn-secondary btn-sm'}, 'Delete');
+        del.onclick = async () => {
+            if (!confirm(`Delete "${line.text}"?`)) return;
+            try { S = await api('DELETE', `/admin/studio/voice-lines/${line.id}`); renderAll(); } catch (e) { say('lineMsg', e.message, 'bad'); }
+        };
+        body.append(h('tr', {}, h('td', {}, line.text), h('td', {}, line.trigger.replace('_', ' ')), h('td', {}, line.mood),
+            h('td', {}, `${line.duration_s.toFixed(1)} s, ${(line.bytes / 1024).toFixed(0)} KB`),
+            h('td', {}, h('audio', {controls: true, preload: 'none', src: `/admin/studio/voice-lines/${line.id}.wav`})), h('td', {}, del)));
+    }
+    const pct = Math.min(100, 100 * S.flash.used_bytes / S.flash.budget_bytes);
+    $('flashBar').style.width = pct + '%';
+    $('flashText').textContent = `Voice lines use ${(S.flash.used_bytes / 1024).toFixed(0)} KB of roughly ${(S.flash.budget_bytes / 1024).toFixed(0)} KB of space on the ESP32 (about ${Math.round(S.flash.budget_bytes / 32000)} seconds of speech in total).`;
+}
+function renderAll() { renderLibrary(); renderMoods(); renderLines(); }
+
+// ---------------- actions ----------------
+$('saveFace').onclick = async () => {
+    const name = $('faceName').value.trim();
+    if (!name) return say('faceMsg', 'Give the face a name first.', 'bad');
+    try {
+        const existed = name in S.faces;
+        S = await api('PUT', `/admin/studio/faces/${encodeURIComponent(name)}`, {rows});
+        current = name; renderAll(); say('faceMsg', existed ? `Updated "${name}".` : `Saved "${name}".`, 'ok');
+    } catch (e) { say('faceMsg', e.message, 'bad'); }
+};
+$('deleteFace').onclick = async () => {
+    const name = $('faceName').value.trim();
+    if (!(name in S.faces)) return say('faceMsg', 'Pick a saved face to delete.', 'bad');
+    if (!confirm(`Delete the face "${name}"? Moods using it switch back to a default face.`)) return;
+    try { S = await api('DELETE', `/admin/studio/faces/${encodeURIComponent(name)}`); current = null; renderAll(); show(BLANK); say('faceMsg', `Deleted "${name}".`, 'ok'); }
+    catch (e) { say('faceMsg', e.message, 'bad'); }
+};
+$('importBtn').onclick = () => $('importFile').click();
+$('importFile').onchange = async () => {
+    const file = $('importFile').files[0]; $('importFile').value = ''; if (!file) return;
+    try {
+        const res = await api('POST', '/admin/studio/faces/import', JSON.parse(await file.text()));
+        S = res; renderAll(); say('faceMsg', `Imported ${res.added} face(s)` + (res.skipped ? `, skipped ${res.skipped}.` : '.'), 'ok');
+    } catch (e) { say('faceMsg', 'Import failed: ' + e.message, 'bad'); }
+};
+$('makeLine').onclick = async () => {
+    const text = $('lineText').value.trim();
+    if (!text) return say('lineMsg', 'Type what Sparky should say.', 'bad');
+    $('makeLine').disabled = true; say('lineMsg', 'Sparky is warming up his voice...');
+    try {
+        const res = await api('POST', '/admin/studio/voice-lines', {text, trigger: $('lineTrigger').value, mood: $('lineMood').value});
+        S = res; renderAll(); $('lineText').value = '';
+        say('lineMsg', `Done - ${res.line.duration_s.toFixed(1)} seconds. Press play to hear it.`, 'ok');
+    } catch (e) { say('lineMsg', e.message, 'bad'); }
+    finally { $('makeLine').disabled = false; }
+};
+
+(async () => {
+    try { S = await api('GET', '/admin/studio'); renderAll(); select(Object.keys(S.faces)[0]); }
+    catch (e) { say('faceMsg', 'Could not load the studio: ' + e.message, 'bad'); }
+})();
+</script>
+</body>
+</html>

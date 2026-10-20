@@ -27,6 +27,7 @@ from .routers import (
     llm,
     metrics,
     query,
+    studio,
     system,
     tenants,
     voice,
@@ -416,6 +417,7 @@ app.include_router(document_manager.router)
 app.include_router(metrics.router)
 app.include_router(async_processing.router)
 app.include_router(voice.router)
+app.include_router(studio.router)
 if PROGRESS_ROUTER_AVAILABLE:
     app.include_router(progress.router)
 if CACHE_ROUTER_AVAILABLE:
