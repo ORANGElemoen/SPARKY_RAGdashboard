@@ -215,3 +215,4 @@ data/processing_queue.json
 config/learner_config.yaml
 data/voice_recordings/
 data/studio/
+data/fake_sparky/
