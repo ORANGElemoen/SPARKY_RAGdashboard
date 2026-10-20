@@ -12,6 +12,7 @@ mapping into a C header the ESP32 sketch includes; voice lines export as
 16 kHz mono WAVs sized for the ESP32's flash.
 """
 
+import hashlib
 import io
 import json
 import re
@@ -25,6 +26,7 @@ from typing import Dict, List, Optional
 STUDIO_DIR = Path("data/studio")
 VOICE_DIR = STUDIO_DIR / "voice"
 STORE = STUDIO_DIR / "studio.json"
+SYNC_STORE = STUDIO_DIR / "device_sync.json"   # which pack each device reported having
 FACES_FORMAT = "sparky-faces/1"
 
 # Face states from the design report (REQ-F-09), in firmware enum order.
@@ -349,3 +351,37 @@ def summary(data: Optional[Dict] = None) -> Dict:
         "flash": {"used_bytes": used, "budget_bytes": FLASH_BUDGET_BYTES},
         "default_faces": list(DEFAULT_FACES),
     }
+
+
+# ---------------------------------------------------------------- Wi-Fi personality pack
+def build_pack(data: Optional[Dict] = None) -> Dict:
+    """What a Sparky downloads over Wi-Fi: faces, mood mapping and voice-line list.
+
+    pack_version is a fingerprint of the content, so a device can ask
+    "is pack X still current?" and get a tiny "yes" (HTTP 304). Voice-line
+    ids never change content, so the device only fetches ids it lacks.
+    """
+    data = data or load()
+    lines = [{"id": v["id"], "trigger": v["trigger"], "mood": v["mood"], "bytes": v["bytes"]}
+             for v in data["voice_lines"] if (VOICE_DIR / f"{v['id']}.wav").exists()]
+    body = {"faces": data["faces"], "moods": {m: data["moods"][m] for m in MOODS}, "voice_lines": lines}
+    canonical = json.dumps(body, sort_keys=True, separators=(",", ":"), ensure_ascii=False)
+    version = hashlib.sha256(canonical.encode("utf-8")).hexdigest()[:16]
+    return {"pack_version": version, "protocol_version": 1, "sample_rate": DEVICE_SAMPLE_RATE,
+            "mood_order": MOODS, **body}
+
+
+def device_sync() -> Dict[str, Dict]:
+    if SYNC_STORE.exists():
+        return json.loads(SYNC_STORE.read_text(encoding="utf-8"))
+    return {}
+
+
+def record_device_sync(device_id: int, pack_version: str, free_bytes: int, error: Optional[str] = None) -> None:
+    sync = device_sync()
+    sync[str(device_id)] = {"pack_version": pack_version, "free_bytes": int(free_bytes), "error": error,
+                            "at": datetime.now(timezone.utc).isoformat(timespec="seconds")}
+    STUDIO_DIR.mkdir(parents=True, exist_ok=True)
+    tmp = SYNC_STORE.with_suffix(".tmp")
+    tmp.write_text(json.dumps(sync, indent=1), encoding="utf-8")
+    tmp.replace(SYNC_STORE)
