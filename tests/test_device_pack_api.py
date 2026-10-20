@@ -6,6 +6,7 @@ from fastapi.testclient import TestClient
 
 from core.repositories.device_repository import Device
 from core.routers import device_auth, device_pack
+from core.services import device_commands
 from core.services import studio_service as studio
 
 
@@ -54,3 +55,13 @@ def test_ack_is_recorded_per_device():
     assert studio.device_sync()["7"]["pack_version"] == "abcd1234abcd1234"
     bad = c.post("/api/v1/device/pack/ack", json={"pack_version": "x" * 65, "free_bytes": 1})
     assert bad.status_code == 422
+
+
+def test_commands_204_then_face(monkeypatch):
+    monkeypatch.setattr(device_commands, "board", device_commands.CommandBoard())
+    c = _client(SPARKY)
+    assert c.get("/api/v1/device/commands?wait=0").status_code == 204
+    face = ["#" * 32] * 8
+    device_commands.board.post(7, {"type": "show_face", "rows": face, "seconds": 10})
+    r = c.get("/api/v1/device/commands?wait=0")
+    assert r.status_code == 200 and r.json()["rows"] == face

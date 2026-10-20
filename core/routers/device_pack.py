@@ -14,6 +14,7 @@ from fastapi.responses import FileResponse, JSONResponse, Response
 from pydantic import BaseModel, Field
 
 from ..repositories.device_repository import Device
+from ..services import device_commands
 from ..services import studio_service as studio
 from .device_auth import get_device_from_key
 
@@ -55,3 +56,12 @@ async def get_pack_voice(line_id: str, device: Device = Depends(require_device))
 async def ack_pack(body: PackAck, device: Device = Depends(require_device)):
     studio.record_device_sync(device.id, body.pack_version, body.free_bytes, body.error)
     return {"ok": True}
+
+
+@router.get("/commands")
+async def get_commands(wait: float = 25, device: Device = Depends(require_device)):
+    """Long-poll: held open up to `wait` seconds; 204 = nothing to do."""
+    command = await device_commands.board.wait(device.id, timeout=max(0.0, min(wait, 30.0)))
+    if command is None:
+        return Response(status_code=204)
+    return command
