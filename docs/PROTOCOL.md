@@ -132,6 +132,44 @@ the `Accept` header — a device should always be prepared to parse a plain
 JSON error body even when it requested the binary format, since an error
 can occur before any audio synthesis starts.
 
+## Personality pack (Sparky Studio content over Wi-Fi)
+
+Additive to protocol version 1 - existing endpoints are unchanged. All of
+these need `X-Device-Key`; a browser request without one gets `401`.
+
+| Request | Response |
+|---|---|
+| `GET /api/v1/device/pack` (optional `If-None-Match: "<pack_version>"`) | `304` if unchanged, else `200` JSON manifest with an `ETag` |
+| `GET /api/v1/device/pack/voice/<id>.wav` | the voice line: 16 kHz, 16-bit, mono WAV with a 44-byte header (`404` if unknown) |
+| `POST /api/v1/device/pack/ack` `{"pack_version", "free_bytes", "error"?}` | `{"ok": true}` - shown on the Studio's "Your Sparkys" table |
+| `GET /api/v1/device/commands?wait=25` (long-poll, at most 30) | `204` nothing, or `{"type": "show_face", "rows": [8 x 32 chars], "seconds": 10}` or `{"type": "sync"}` |
+
+Manifest:
+
+```json
+{
+  "pack_version": "3f9a1c07d2e4b5a6",
+  "protocol_version": 1,
+  "sample_rate": 16000,
+  "mood_order": ["idle", "listening", "thinking", "talking", "happy", "error"],
+  "faces": {"Happy  ^ ^": ["................................", "..."]},
+  "moods": {"idle": "Sleepy / idle", "happy": "Happy  ^ ^"},
+  "voice_lines": [{"id": "<32 hex>", "trigger": "button_release", "mood": "thinking", "bytes": 61716}]
+}
+```
+
+Faces are 8 rows of 32 characters, top row first, `#` = LED on, `.` = off.
+
+Device rules:
+- Voice-line ids never change content - download only ids you don't have
+  (or whose file size differs), delete files whose id is no longer listed.
+- Download everything first, then replace `manifest.json`, then the stored
+  version; never switch to a half-downloaded pack.
+- Only sync / long-poll while idle (not listening, thinking or talking).
+- On `{"type": "sync"}` sync now (the server sends it whenever Studio
+  content changes); otherwise sync at boot and every 5 minutes.
+- `scripts/fake_sparky.py` is the reference implementation.
+
 ## Firmware guidance (not a server concern, recorded here for later)
 
 - **Don't request a live "thinking" acknowledgement from the server.** Play
