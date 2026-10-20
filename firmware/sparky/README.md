@@ -4,6 +4,9 @@ Faces, mood mapping and voice lines come from **Sparky Studio** over Wi-Fi
 (docs/PROTOCOL.md, "Personality pack"). This program only has to be put on
 the ESP32 once.
 
+Wiring, and a test for each part before this program goes on: `docs/sparky_wiring_guide.pdf`
+and the test sketch in `../sparky_hw_test/`.
+
 ## Build and upload
 
 Board: **ESP32 Dev Module**, partition scheme **Default 4MB with spiffs**

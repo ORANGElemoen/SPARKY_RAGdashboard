@@ -1,6 +1,6 @@
 // Plays 16 kHz 16-bit mono WAVs from LittleFS through the MAX98357A on I2S port 1
-// (port 0 stays free for the INMP441 microphone). Driving SD high (3.3 V) selects
-// the left channel on the MAX98357A, which is where ONLY_LEFT puts the samples.
+// (port 0 stays free for the INMP441 microphone). Each mono sample goes out on both
+// stereo slots, so the amp plays it whichever channel its SD pin level selects.
 // Legacy I2S driver: still in ESP32 Arduino core 3.x (deprecation warning only);
 // the microphone code must use the same driver - the old and new ones can't mix.
 #include "voice.h"
@@ -17,7 +17,7 @@ void voiceBegin() {
   cfg.mode = (i2s_mode_t)(I2S_MODE_MASTER | I2S_MODE_TX);
   cfg.sample_rate = 16000;
   cfg.bits_per_sample = I2S_BITS_PER_SAMPLE_16BIT;
-  cfg.channel_format = I2S_CHANNEL_FMT_ONLY_LEFT;
+  cfg.channel_format = I2S_CHANNEL_FMT_RIGHT_LEFT;
   cfg.communication_format = I2S_COMM_FORMAT_STAND_I2S;
   cfg.dma_desc_num = 8;
   cfg.dma_frame_num = 256;
@@ -55,10 +55,13 @@ bool voicePlay(const char* trigger, uint8_t* moodOut) {
   if (!LittleFS.exists(path)) return false;
   File f = LittleFS.open(path, "r");
   f.seek(44);                                    // skip the 44-byte WAV header (server always writes this layout)
-  uint8_t buf[1024];
+  int16_t mono[256], stereo[512];
   size_t n, written;
   digitalWrite(PIN_AMP_SD, HIGH);
-  while ((n = f.read(buf, sizeof(buf))) > 0) i2s_write(I2S_NUM_1, buf, n, &written, portMAX_DELAY);
+  while ((n = f.read((uint8_t*)mono, sizeof(mono)) / 2) > 0) {
+    for (size_t i = 0; i < n; i++) stereo[2 * i] = stereo[2 * i + 1] = mono[i];
+    i2s_write(I2S_NUM_1, stereo, n * 4, &written, portMAX_DELAY);
+  }
   i2s_zero_dma_buffer(I2S_NUM_1);
   delay(30);                                     // let the last DMA buffer drain before muting
   digitalWrite(PIN_AMP_SD, LOW);
