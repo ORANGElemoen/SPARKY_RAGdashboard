@@ -22,6 +22,7 @@ from starlette.middleware.sessions import SessionMiddleware
 from .routers import (
     admin,
     async_processing,
+    device_pack,
     document_manager,
     documents,
     llm,
@@ -418,6 +419,7 @@ app.include_router(metrics.router)
 app.include_router(async_processing.router)
 app.include_router(voice.router)
 app.include_router(studio.router)
+app.include_router(device_pack.router)
 if PROGRESS_ROUTER_AVAILABLE:
     app.include_router(progress.router)
 if CACHE_ROUTER_AVAILABLE:
