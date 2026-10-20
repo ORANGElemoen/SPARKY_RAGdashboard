@@ -89,8 +89,9 @@ around it, not a separate answer-generation path.
 - **STT**: `faster-whisper`, model size `base` (env var `WHISPER_MODEL_SIZE`), CPU,
   `int8` compute type. Model auto-downloads from HuggingFace on first use and is cached
   at `~/.cache/huggingface`.
-- **TTS**: `piper-tts`, voice `en_US-hfc_female-medium` (env var `PIPER_VOICE`, default
-  set in `core/services/voice_service.py`). Voice models live in
+- **TTS**: `piper-tts`, the custom fine-tuned Sparky voice `en_US-sparky-medium` whenever
+  its model is in `data/piper_voices/` (not in git), else the stock `en_US-hfc_female-medium`;
+  `PIPER_VOICE` overrides both (see `_voice_name()` in `core/services/voice_service.py`). Voice models live in
   `data/piper_voices/*.onnx` + `.onnx.json`, downloaded via
   `python -m piper.download_voices <voice_name> --download-dir data/piper_voices`.
   Several other voices were downloaded for comparison and are still on disk if you want

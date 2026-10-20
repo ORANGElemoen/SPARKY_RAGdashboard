@@ -108,13 +108,23 @@ def _get_whisper_model():
     return _whisper_model
 
 
+SPARKY_VOICE = "en_US-sparky-medium"      # the custom fine-tuned Sparky voice (data/piper_voices, not in git)
+FALLBACK_VOICE = "en_US-hfc_female-medium"  # downloadable stock voice for checkouts without the Sparky model
+
+
+def _voice_name(voice_dir: Path) -> str:
+    """PIPER_VOICE if set, else Sparky's own voice when its model is present, else the stock voice."""
+    return os.getenv("PIPER_VOICE") or (
+        SPARKY_VOICE if (voice_dir / f"{SPARKY_VOICE}.onnx").exists() else FALLBACK_VOICE)
+
+
 def _get_piper_voice():
     global _piper_voice
     if _piper_voice is None:
         from piper import PiperVoice
 
-        voice_name = os.getenv("PIPER_VOICE", "en_US-hfc_female-medium")
         voice_dir = Path(os.getenv("PIPER_VOICE_DIR", "data/piper_voices"))
+        voice_name = _voice_name(voice_dir)
         model_path = voice_dir / f"{voice_name}.onnx"
 
         if not model_path.exists():
