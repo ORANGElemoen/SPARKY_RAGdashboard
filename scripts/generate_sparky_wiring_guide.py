@@ -6,8 +6,9 @@ docs/images/sparky_breadboard_layout.png.
 
 v3 changes from the report's v2 diagram: the accent LED is a plain 5 mm white LED moved
 from the 5 V rail to the 3.3 V rail (the report's identified risk: GPIO 4 could see more
-than 3.6 V), the ESP32 sits off the breadboard on female-to-male jumpers (a 38-pin
-DevKitC on a half breadboard leaves no free hole on one side), amp GAIN is optional.
+than 3.6 V), the ESP32 sits off the breadboard on female-to-male jumpers (on a half breadboard it
+would take half the rows, leaving too few for the parts), amp GAIN is optional.
+Board: ESP-WROOM-32 on a 30-pin dev board (DOIT DevKit V1 layout; 5 V pin is VIN).
 
 Pin map: report Table "ESP32 GPIO allocation" = firmware/sparky/config.h.
 Not part of the running app; re-run when the wiring changes:
@@ -41,23 +42,23 @@ COL = {"mic": "#7c3aed", "amp": "#059669", "matrix": "#2563eb", "button": "#ea58
        "led": "#db2777", "touch": "#0891b2", "5V": V5, "3V3": V33, "GND": GND}
 INK, MUTED = "#0f172a", "#94a3b8"
 
-# ESP32-DevKitC (38-pin) header order, antenna end first. (gpio label, used-for or None, colour key)
-J2 = [("3V3", "3.3 V rail", "3V3"), ("EN", None, None), ("VP / 36", None, None), ("VN / 39", None, None),
-      ("34", None, None), ("35", None, None), ("32", "MIC SCK", "mic"), ("33", "MIC SD", "mic"),
-      ("25", "MIC WS", "mic"), ("26", "AMP LRC", "amp"), ("27", "AMP BCLK", "amp"), ("14", "BUTTON", "button"),
-      ("12", None, None), ("GND", "GND rail", "GND"), ("13", "TOUCH PAD", "touch"), ("SD2 / 9", None, None),
-      ("SD3 / 10", None, None), ("CMD / 11", None, None), ("5V", "5 V rail", "5V")]
-J3 = [("GND", "GND rail", "GND"), ("23", "MATRIX DIN", "matrix"), ("22", "AMP DIN", "amp"), ("TX / 1", None, None),
-      ("RX / 3", None, None), ("21", "AMP SD (mute)", "amp"), ("GND", None, None), ("19", None, None),
-      ("18", "MATRIX CLK", "matrix"), ("5", "MATRIX CS", "matrix"), ("17", None, None), ("16", None, None),
-      ("4", "LED (−) short leg", "led"), ("0", None, None), ("2", None, None), ("15", None, None),
-      ("SD1 / 8", None, None), ("SD0 / 7", None, None), ("CLK / 6", None, None)]
+# 30-pin ESP32 DevKit V1 (ESP-WROOM-32) header order, antenna end first.
+# (printed label, used-for or None, colour key). Boards print D32, G32 or P32 - same pin.
+J2 = [("EN", None, None), ("VP / 36", None, None), ("VN / 39", None, None), ("D34", None, None),
+      ("D35", None, None), ("D32", "MIC SCK", "mic"), ("D33", "MIC SD", "mic"), ("D25", "MIC WS", "mic"),
+      ("D26", "AMP LRC", "amp"), ("D27", "AMP BCLK", "amp"), ("D14", "BUTTON", "button"), ("D12", None, None),
+      ("D13", "TOUCH PAD", "touch"), ("GND", "GND rail", "GND"), ("VIN", "5 V rail", "5V")]
+J3 = [("D23", "MATRIX DIN", "matrix"), ("D22", "AMP DIN", "amp"), ("TX0 / 1", None, None), ("RX0 / 3", None, None),
+      ("D21", "AMP SD (mute)", "amp"), ("D19", None, None), ("D18", "MATRIX CLK", "matrix"),
+      ("D5", "MATRIX CS", "matrix"), ("TX2 / 17", None, None), ("RX2 / 16", None, None),
+      ("D4", "LED (−) short leg", "led"), ("D2", None, None), ("D15", None, None), ("GND", None, None),
+      ("3V3", "3.3 V rail", "3V3")]
 
 # Every connection, in build order: (step, from, to, wire, colour key). Used for the checklist.
 WIRES = [
-    ("Power", "ESP32 5V", "Top + rail (5 V)", "F-M jumper", "5V"),
+    ("Power", "ESP32 VIN (= 5 V from USB)", "Top + rail (5 V)", "F-M jumper", "5V"),
     ("Power", "ESP32 3V3", "Bottom + rail (3.3 V)", "F-M jumper", "3V3"),
-    ("Power", "ESP32 GND (either)", "Top − rail (GND)", "F-M jumper", "GND"),
+    ("Power", "ESP32 GND (either one)", "Top − rail (GND)", "F-M jumper", "GND"),
     ("Power", "Top − rail (GND)", "Bottom − rail (GND), at row 1", "M-M jumper", "GND"),
     ("Matrix", "Matrix VCC (IN end)", "Top + rail (5 V)", "Matrix cable + M-M pin", "5V"),
     ("Matrix", "Matrix GND", "Top − rail (GND)", "Matrix cable + M-M pin", "GND"),
@@ -118,21 +119,18 @@ def draw_pinout():
     ax.set_ylim(-7.3, 7.4)
     ax.axis("off")
     ax.text(0, 7.05, "Sparky - circuit pinout (v3)", ha="center", fontsize=19, fontweight="bold", color=INK)
-    ax.text(0, 6.55, "ESP32-DevKitC 38-pin seen from the top (antenna up, USB down). Coloured tags = pins Sparky uses. "
+    ax.text(0, 6.55, "30-pin ESP32 DevKit (ESP-WROOM-32) seen from the top (antenna up, USB down). Coloured tags = pins Sparky uses. "
             "Go by the labels printed on your boards.", ha="center", fontsize=9.5, color="#475569")
 
     # board
-    pitch, top = 0.6, 5.6
+    pitch, top = 0.75, 5.6
     bx, bw = -1.9, 3.8
-    ax.add_patch(FancyBboxPatch((bx, top - 18 * pitch - 0.55), bw, 18 * pitch + 1.1,
+    ax.add_patch(FancyBboxPatch((bx, top - 14 * pitch - 0.55), bw, 14 * pitch + 1.1,
                                 boxstyle="round,pad=0.05,rounding_size=0.25", fc="#1e293b", ec="#0f172a", lw=2))
-    ax.add_patch(Rectangle((-0.5, top - 1.6), 1.0, 1.95, fc="#cbd5e1", ec="#94a3b8"))
-    ax.text(0, top - 0.65, "WROOM\n-32", ha="center", va="center", fontsize=7, color="#334155",
-            fontweight="bold")
-    ax.add_patch(Rectangle((-0.55, top - 18 * pitch - 0.85), 1.1, 0.6, fc="#9ca3af", ec="#6b7280"))
-    ax.text(0, top - 18 * pitch - 1.15, "USB", ha="center", fontsize=8.5, color="#475569")
-    ax.text(0, top - 9 * pitch, "ESP32\nDevKitC", ha="center", va="center", fontsize=12, color="#e2e8f0",
-            fontweight="bold")
+    ax.add_patch(Rectangle((-0.55, top - 14 * pitch - 0.85), 1.1, 0.6, fc="#9ca3af", ec="#6b7280"))
+    ax.text(0, top - 14 * pitch - 1.15, "USB", ha="center", fontsize=8.5, color="#475569")
+    ax.text(0, top - 7 * pitch, "ESP32 DevKit 30-pin  ·  ESP-WROOM-32", rotation=90, ha="center", va="center",
+            fontsize=10.5, color="#e2e8f0", fontweight="bold")
     for side, pins in ((-1, J2), (1, J3)):
         for i, (label, use, key) in enumerate(pins):
             y = top - i * pitch
@@ -170,7 +168,7 @@ def draw_pinout():
            [("pad / wire", "GPIO 13 (touch T4)", "touch")],
            note="Bench: bare jumper end. In Sparky: copper tape pad")
     module(ax, rx, -1.65, w, "Power (USB 5 V into the ESP32)", "#334155",
-           [("ESP32 5V", "top + rail  = 5 V", "5V"), ("ESP32 3V3", "bottom + rail = 3.3 V", "3V3"),
+           [("ESP32 VIN", "top + rail  = 5 V", "5V"), ("ESP32 3V3", "bottom + rail = 3.3 V", "3V3"),
             ("ESP32 GND", "both − rails (link them)", "GND")],
            note="Never feed 5 V into any GPIO or the 3V3 pin")
 
@@ -260,7 +258,7 @@ def draw_layout():
         ax.text(r, -5.25, str(r), ha="center", fontsize=7, color="#64748b")
 
     # power from the ESP32 + GND link
-    flag(ax, (7, RAIL["top+"]), "ESP32 5V", "5V", True)
+    flag(ax, (7, RAIL["top+"]), "ESP32 VIN", "5V", True)
     flag(ax, (8, RAIL["top-"]), "ESP32 GND", "GND", True)
     flag(ax, (7, RAIL["bot+"]), "ESP32 3V3", "3V3", False)
     wire(ax, (1, RAIL["top-"]), (1, RAIL["bot-"]), "GND", lw=2.6)
@@ -344,8 +342,9 @@ def build_pdf():
           Paragraph("<b>What changed since the report's wiring diagram (v2):</b>", P),
           bullets(["<b>Accent LED moved to 3.3 V</b> - the report's identified risk. It now runs 3.3 V rail -> "
                    "47 Ω -> LED -> GPIO 4, so GPIO 4 never sees more than 3.3 V. Still lit by GPIO 4 LOW.",
-                   "<b>The ESP32 sits off the breadboard</b>, on female-to-male jumpers. A 38-pin ESP32 on a half "
-                   "breadboard covers every free hole next to one of its rows of pins.",
+                   "<b>The ESP32 sits off the breadboard</b>, on female-to-male jumpers. On the half breadboard it "
+                   "would take half the rows and leave at most one hole per pin - no room left for the parts.",
+                   "<b>Drawn for your 30-pin ESP32 board</b> (ESP-WROOM-32). Its 5 V pin is labelled <b>VIN</b>.",
                    "<b>Amp GAIN is optional</b>: open = 9 dB to start, to GND = 12 dB if Sparky is too quiet.",
                    "<b>The LED is a plain white 5 mm LED</b> (what was bought), not a WS2812B."]),
           Paragraph("<b>You still need</b> (not in the orders):", P),
@@ -366,7 +365,7 @@ def build_pdf():
     s += [Paragraph("1. Pinout - what connects to what", H2),
           sized(PINOUT, 180),
           Paragraph("Tag colours match the wire colours used on the next page and in the checklist. "
-                    "Grey pins are unused - leave them free (GPIO 0, 2, 12 and 15 also affect start-up).", SMALL),
+                    "Grey pins are unused - leave them free (D2, D12 and D15 also affect start-up).", SMALL),
           PageBreak(),
           Paragraph("2. Breadboard layout", H2),
           sized(LAYOUT, 180),
@@ -400,10 +399,10 @@ def build_pdf():
           Paragraph("In the monitor, type the test number and press Enter. <b>q</b> stops a long test. Each test "
                     "prints what a pass looks like. Test IDs (M-xx) are the report's module tests.", P),
           Paragraph("Step A - power only", H3),
-          steps(["Wire the four power rows of the checklist (ESP32 5V, 3V3, GND, GND link). Nothing else yet.",
+          steps(["Wire the four power rows of the checklist (ESP32 VIN, 3V3, GND, GND link). Nothing else yet.",
                  "<b>USB unplugged</b>, multimeter on continuity (beep): top + to top − must <b>not</b> beep; bottom "
                  "+ to bottom − must <b>not</b> beep; top + to bottom + must <b>not</b> beep.",
-                 "Plug in USB. Volts mode: top + to − = <b>4.6-5.1 V</b>; bottom + to − = <b>3.2-3.4 V</b>. Unplug."]),
+                 "Plug in USB. Volts mode: top + to − = <b>4.4-5.1 V</b> (VIN is a little under 5 V on USB); bottom + to − = <b>3.2-3.4 V</b>. Unplug."]),
           Paragraph("Step B - LED matrix (M-05) -> test 1", H3),
           Paragraph("Wire the 5 matrix rows. Test 1 first lights a single dot: it must be in the <b>top-left</b> "
                     "corner seen from the front. If it's top-right, set <font face='Courier'>SPARKY_FLIP_X 0</font>; "
