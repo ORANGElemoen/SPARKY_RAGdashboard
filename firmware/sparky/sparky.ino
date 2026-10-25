@@ -45,6 +45,10 @@ void loop() {
       facesShowMood(MOOD_ERROR);
       delay(1500);
     }
+    if (result == ASK_OK) {                                  // a moment of joy after answering
+      facesShowMood(MOOD_HAPPY);
+      delay(HAPPY_AFTER_ANSWER_MS);
+    }
     while (buttonHeld()) delay(10);                          // still held after an 8 s question
     facesShowMood(MOOD_IDLE);
     previewUntil = 0;

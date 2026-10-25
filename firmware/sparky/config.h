@@ -32,6 +32,10 @@ constexpr size_t FLASH_MARGIN_BYTES = 32 * 1024;   // never fill LittleFS comple
 constexpr uint32_t MAX_QUESTION_MS = 8000;    // 8 s at 16 kHz = 256 KB in LittleFS
 constexpr uint32_t MIN_QUESTION_MS = 300;     // shorter presses are taps, not questions
 constexpr uint16_t ANSWER_TIMEOUT_MS = 65000; // speech-to-text + LLM on a CPU server can be slow (16-bit max)
+constexpr uint32_t HAPPY_AFTER_ANSWER_MS = 2000;   // happy face once an answer is done
+constexpr uint32_t SURPRISE_FIRST_MS = 60000;      // idle: show a random library face not used by a mood...
+constexpr uint32_t SURPRISE_MIN_MS = 120000, SURPRISE_MAX_MS = 240000;   // ...every 2-4 minutes
+constexpr uint32_t SURPRISE_SHOW_MS = 3000;        // ...for 3 seconds
 constexpr int MIC_SHIFT = 14;                 // INMP441 24-bit -> 16-bit; lower = louder (13 = x2)
 
 // Same setup hotspot as the bring-up sketch (Sparky_Wifi_Setup.ino).

@@ -13,7 +13,10 @@ const char* const MOOD_NAMES[MOOD_COUNT] = {"idle", "listening", "thinking", "ta
 
 static MD_MAX72XX mx(MD_MAX72XX::FC16_HW, PIN_MATRIX_CS, MATRIX_DEVICES);
 static uint32_t moodFaces[MOOD_COUNT][8];
-static portMUX_TYPE lock = portMUX_INITIALIZER_UNLOCKED;   // guards moodFaces / preview
+constexpr int MAX_EXTRAS = 32;
+static uint32_t extras[MAX_EXTRAS][8];                     // library faces no mood uses ("surprise faces")
+static volatile int extraCount = 0;
+static portMUX_TYPE lock = portMUX_INITIALIZER_UNLOCKED;   // guards moodFaces / extras / preview
 
 static volatile uint8_t mood = MOOD_IDLE;
 static volatile uint32_t moodSince = 0;
@@ -45,6 +48,7 @@ static void useFallback() {
   portENTER_CRITICAL(&lock);
   for (uint8_t m = 0; m < MOOD_COUNT; m++)
     memcpy(moodFaces[m], m == MOOD_ERROR ? FALLBACK_ERROR : FALLBACK_HAPPY, sizeof(moodFaces[m]));
+  extraCount = 0;
   portEXIT_CRITICAL(&lock);
 }
 
@@ -66,8 +70,26 @@ bool facesLoad() {
       loaded[m][r] = rowBits(row);
     }
   }
+  // every other valid face in the library becomes a surprise face
+  static uint32_t more[MAX_EXTRAS][8];
+  int n = 0;
+  for (JsonPair kv : doc["faces"].as<JsonObject>()) {
+    bool used = false;
+    for (uint8_t m = 0; m < MOOD_COUNT; m++) used |= strcmp(doc["moods"][MOOD_NAMES[m]] | "", kv.key().c_str()) == 0;
+    JsonArray rows = kv.value();
+    if (used || rows.size() != 8 || n == MAX_EXTRAS) continue;
+    bool ok = true;
+    for (uint8_t r = 0; r < 8; r++) {
+      const char* row = rows[r] | "";
+      ok &= strlen(row) == 32;
+      if (ok) more[n][r] = rowBits(row);
+    }
+    if (ok) n++;
+  }
   portENTER_CRITICAL(&lock);
   memcpy(moodFaces, loaded, sizeof(moodFaces));
+  memcpy(extras, more, sizeof(extras));
+  extraCount = n;
   portEXIT_CRITICAL(&lock);
   return true;
 }
@@ -131,7 +153,8 @@ static void setLed(uint8_t brightness) { ledcWrite(PIN_LED, 255 - brightness); }
 // ---------------------------------------------------------------- animator task
 static void animator(void*) {
   uint32_t nextBlink = millis() + 3000, nextGlance = millis() + 9000, glanceUntil = 0;
-  int glanceDx = 0;
+  uint32_t nextSurprise = millis() + SURPRISE_FIRST_MS, surpriseUntil = 0;
+  int glanceDx = 0, surprise = 0;
   uint32_t last[8] = {1};                             // forces the first draw
   uint8_t talk = 0;
   for (;;) {
@@ -144,11 +167,24 @@ static void animator(void*) {
     talk = max<int>(level, max(0, talk - 24));                // fast attack, smooth fall
     level = 0;
     uint8_t led = 0;
+    bool surprising = false;
 
     if (!previewOn) {
       switch (m) {
         case MOOD_IDLE:
           led = 8 + ease(now, 4000) * 100 / 255;      // slow breathing
+          if (now > nextSurprise) {                   // now and then: a face from the library
+            if (extraCount) { surprise = esp_random() % extraCount; surpriseUntil = now + SURPRISE_SHOW_MS; }
+            nextSurprise = now + SURPRISE_MIN_MS + esp_random() % (SURPRISE_MAX_MS - SURPRISE_MIN_MS);
+          }
+          if (now < surpriseUntil && surprise < extraCount) {
+            portENTER_CRITICAL(&lock);
+            memcpy(f, extras[surprise], sizeof(f));
+            portEXIT_CRITICAL(&lock);
+            led = 255;
+            surprising = true;
+            break;
+          }
           if (now > nextGlance) {                     // look left or right for a moment
             glanceDx = (esp_random() & 1) ? 2 : -2;
             glanceUntil = now + 700 + esp_random() % 800;
@@ -180,7 +216,7 @@ static void animator(void*) {
           if (inMood < 700) shift(f, (now / 80) % 2 ? 1 : -1, 0);   // head shake
           break;
       }
-      if (m == MOOD_IDLE || m == MOOD_LISTENING || m == MOOD_HAPPY || m == MOOD_TALKING) {
+      if (!surprising && (m == MOOD_IDLE || m == MOOD_LISTENING || m == MOOD_HAPPY || m == MOOD_TALKING)) {
         if (now > nextBlink + 180) nextBlink = now + 2500 + esp_random() % 3500;
         else if (now > nextBlink) blink(f, now - nextBlink < 60 || now - nextBlink > 120 ? 1 : 2);
       }
