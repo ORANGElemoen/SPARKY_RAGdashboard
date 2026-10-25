@@ -6,6 +6,8 @@
 //   2 speaker tone (M-04)      5 mic sample rate (M-02)           8 accent LED (M-20)
 //   3 mic level meter (M-01)   6 button counter (M-07)            9 power stress (M-08)
 //   0 all LEDs on, you set the brightness with + and - (finds dim columns / weak contacts)
+//   v Sparky's voice: Studio lines (16 kHz) + a sample answer (22 kHz) - needs voice_sample.h
+//     from scripts/make_hw_test_voice.py
 //   q stops a running test.
 //
 // Pins must match firmware/sparky/config.h (report pin map).
@@ -13,6 +15,10 @@
 #include <MD_MAX72xx.h>
 #include <driver/i2s.h>
 #include <esp_system.h>
+#if __has_include("voice_sample.h")
+#include "voice_sample.h"   // generated, gitignored
+#define HAVE_VOICE 1
+#endif
 
 constexpr int PIN_MIC_SCK = 32, PIN_MIC_WS = 25, PIN_MIC_SD = 33;
 constexpr int PIN_AMP_BCLK = 27, PIN_AMP_LRC = 26, PIN_AMP_DIN = 22, PIN_AMP_SD = 21;
@@ -303,6 +309,23 @@ void testBrightness() {
   Serial.println("  PASS if every column looked equally bright at every level.");
 }
 
+void testVoice() {
+#ifdef HAVE_VOICE
+  Serial.println("\n[v] Sparky's voice (M-04): listen from about 2 m away. q = stop");
+  for (int i = 0; i < VOICE_CLIP_COUNT && !stopRequested(); i++) {
+    const VoiceClip& c = VOICE_CLIPS[i];
+    Serial.printf("  %lu Hz: \"%s\"\n", (unsigned long)c.rate, c.text);
+    i2s_set_sample_rates(I2S_NUM_1, c.rate);
+    playSamples(c.data, c.samples);
+    delay(600);
+  }
+  i2s_set_sample_rates(I2S_NUM_1, RATE);
+  Serial.println("  PASS if every word was clear from 2 m, with no crackle or distortion.");
+#else
+  Serial.println("\n[v] No voice clips built in: run  python scripts/make_hw_test_voice.py  and upload again.");
+#endif
+}
+
 void testPower() {
   Serial.println("\n[9] Power stress (M-08): all LEDs on + beep, brightness 2 -> 5 -> 8. Watch for a reset.");
   for (int level : {2, 5, 8}) {
@@ -324,7 +347,7 @@ void menu() {
   Serial.println(" 1 face display      4 record + play back   7 touch pad");
   Serial.println(" 2 speaker tone      5 mic sample rate      8 accent LED");
   Serial.println(" 3 mic level meter   6 button counter       9 power stress");
-  Serial.println(" 0 all LEDs on, + / - brightness");
+  Serial.println(" 0 all LEDs on, + / - brightness   v Sparky's voice");
   Serial.print("Type a number: ");
 }
 
@@ -360,6 +383,7 @@ void loop() {
     case '8': testLed(); break;
     case '9': testPower(); break;
     case '0': testBrightness(); break;
+    case 'v': case 'V': testVoice(); break;
     default: return;                              // ignore newlines etc.
   }
   menu();

@@ -255,8 +255,15 @@ def export_header(data: Optional[Dict] = None) -> str:
 
 # ---------------------------------------------------------------- voice lines
 def to_device_wav(wav_bytes: bytes) -> bytes:
-    """Any mono/stereo 16-bit WAV -> 16 kHz mono 16-bit WAV (linear resample)."""
+    """Any mono/stereo 16-bit WAV -> 16 kHz mono 16-bit WAV.
+
+    resample_poly low-pass filters while resampling; plain interpolation folded the
+    voice's 8-11 kHz content back down as a harsh fizz on s/t sounds.
+    """
+    from math import gcd
+
     import numpy as np
+    from scipy.signal import resample_poly  # scipy comes with scikit-learn (core requirement)
 
     with wave.open(io.BytesIO(wav_bytes)) as w:
         rate, channels, width = w.getframerate(), w.getnchannels(), w.getsampwidth()
@@ -267,8 +274,8 @@ def to_device_wav(wav_bytes: bytes) -> bytes:
     if channels > 1:
         audio = audio.reshape(-1, channels).mean(axis=1)
     if rate != DEVICE_SAMPLE_RATE and len(audio):
-        n_out = int(round(len(audio) * DEVICE_SAMPLE_RATE / rate))
-        audio = np.interp(np.linspace(0, len(audio) - 1, n_out), np.arange(len(audio)), audio)
+        g = gcd(DEVICE_SAMPLE_RATE, rate)
+        audio = resample_poly(audio, DEVICE_SAMPLE_RATE // g, rate // g)
     out = io.BytesIO()
     with wave.open(out, "wb") as w:
         w.setnchannels(1)

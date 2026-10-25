@@ -216,3 +216,4 @@ config/learner_config.yaml
 data/voice_recordings/
 data/studio/
 data/fake_sparky/
+firmware/sparky_hw_test/voice_sample.h
