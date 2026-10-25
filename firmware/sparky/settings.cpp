@@ -57,6 +57,7 @@ void settingsBegin() {
   prefs.putString("server", serverUrl);
   prefs.putString("key", deviceKey);
   prefs.putString("class", classCode);
+  WiFi.setTxPower(SPARKY_WIFI_TX_POWER);  // smaller current spikes (see config.h)
   WiFi.setSleep(false);   // modem power-save makes packets arrive in bursts: streamed answers stuttered
 }
 

@@ -39,6 +39,10 @@ constexpr uint32_t SURPRISE_MIN_MS = 120000, SURPRISE_MAX_MS = 240000;   // ...e
 constexpr uint32_t SURPRISE_SHOW_MS = 3000;        // ...for 3 seconds
 constexpr size_t PCM_BUFFER_BYTES = 65536;       // answer audio buffer: ~1.5 s at 22 kHz
 constexpr uint32_t PREBUFFER_MS = 1000;          // speak once this much is buffered
+// Wi-Fi transmit power. Full power (19.5 dBm) makes current spikes that sag a weak USB supply
+// below what the 3.3 V regulator needs, and the radio drops data (answers stutter on chargers).
+// 11 dBm is plenty within a classroom; raise it if Sparky is far from the router.
+#define SPARKY_WIFI_TX_POWER WIFI_POWER_11dBm
 constexpr uint32_t STATUS_EVERY_MS = 60000;      // Wi-Fi signal report to the server while idle
 constexpr int MIC_SHIFT = 14;                 // INMP441 24-bit -> 16-bit; lower = louder (13 = x2)
 
