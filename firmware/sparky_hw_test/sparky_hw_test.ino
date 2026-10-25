@@ -92,27 +92,37 @@ void micBegin() {
   i2s_set_pin(I2S_NUM_0, &pins);
 }
 
-void playSamples(const int16_t* mono, size_t n) {   // mono 16 kHz -> both I2S slots
+void writeSamples(const int16_t* mono, size_t n) {  // mono 16 kHz -> both I2S slots (amp must be on)
   int16_t frame[512];
   size_t written;
-  digitalWrite(PIN_AMP_SD, HIGH);
   for (size_t i = 0; i < n; i += 256) {
     size_t k = min((size_t)256, n - i);
     for (size_t j = 0; j < k; j++) frame[2 * j] = frame[2 * j + 1] = mono[i + j];
     i2s_write(I2S_NUM_1, frame, k * 4, &written, portMAX_DELAY);
   }
+}
+
+void ampOff() {
   i2s_zero_dma_buffer(I2S_NUM_1);
-  delay(30);
+  delay(30);                                      // let the last buffer drain before muting
   digitalWrite(PIN_AMP_SD, LOW);
+}
+
+void playSamples(const int16_t* mono, size_t n) {
+  digitalWrite(PIN_AMP_SD, HIGH);
+  writeSamples(mono, n);
+  ampOff();
 }
 
 void beep(float hz, float seconds, int16_t amplitude) {
   static int16_t buf[256];
   size_t total = seconds * RATE;
+  digitalWrite(PIN_AMP_SD, HIGH);                 // unmute once for the whole beep, not per buffer
   for (size_t done = 0; done < total; done += 256) {
     for (int i = 0; i < 256; i++) buf[i] = amplitude * sinf(2 * PI * hz * (done + i) / RATE);
-    playSamples(buf, 256);
+    writeSamples(buf, 256);
   }
+  ampOff();
 }
 
 // Reads 256 stereo frames; returns how many it got and the peak of each slot (as 16-bit levels).
