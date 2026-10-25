@@ -66,6 +66,13 @@ the setup page, never into the code (this repository is public).
    finishes the job.
 9. **Server down:** stop the server for a minute - Sparky keeps its faces
    and voice lines and picks up again when the server is back.
+10. **Voice question (the main one):** hold the button, ask "Why do we have
+    day and night?", let go. Expected: listening face while held, the
+    "button_release" line plays straight away, then the answer is spoken
+    sentence by sentence with the talking face. The serial monitor shows
+    `[ask] heard: "..."` - if the words are wrong, the mic is too quiet or
+    too loud: change `MIC_SHIFT` in `config.h` (13 = twice as loud).
+    No Wi-Fi or server: the "wifi_error" / "server_error" line plays.
 
 ## Files
 
@@ -78,6 +85,8 @@ the setup page, never into the code (this repository is public).
 | `faces.*` | Faces and mood mapping from the pack, drawn on the MAX7219 matrix |
 | `voice.*` | Plays voice lines through the MAX98357A amplifier |
 | `network_task.*` | Background sync + "Send to Sparky now", so the button never waits |
+| `ask.*` | Push to talk: record, send the question, play the answer as it streams in |
+| `mic.*` | Records the INMP441 microphone into flash |
 
 `scripts/fake_sparky.py` does exactly what `pack_sync.cpp` does, in Python -
 handy for testing the server side without hardware.

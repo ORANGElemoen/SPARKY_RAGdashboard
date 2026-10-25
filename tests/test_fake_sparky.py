@@ -23,3 +23,12 @@ def test_downloads_only_missing_or_wrong_size_and_deletes_leftovers():
 def test_face_art():
     art = fake.face_art(["#" + "." * 31] * 8).splitlines()
     assert len(art) == 8 and art[0].startswith("@") and art[0][1] == " "
+
+
+def test_parse_answer_splits_metadata_and_frames():
+    import json
+    import struct
+    meta = json.dumps({"frame_count": 2, "transcript": "hi"}).encode()
+    body = b"".join(struct.pack(">I", len(b)) + b for b in (meta, b"RIFF-one", b"RIFF-two"))
+    parsed, frames = fake.parse_answer(body)
+    assert parsed["transcript"] == "hi" and frames == [b"RIFF-one", b"RIFF-two"]

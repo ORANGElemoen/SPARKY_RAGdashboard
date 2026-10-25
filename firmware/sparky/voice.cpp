@@ -55,16 +55,33 @@ bool voicePlay(const char* trigger, uint8_t* moodOut) {
   if (!LittleFS.exists(path)) return false;
   File f = LittleFS.open(path, "r");
   f.seek(44);                                    // skip the 44-byte WAV header (server always writes this layout)
-  int16_t mono[256], stereo[512];
-  size_t n, written;
+  int16_t mono[256];
+  size_t n;
+  voiceStreamBegin(16000);
+  while ((n = f.read((uint8_t*)mono, sizeof(mono)) / 2) > 0) voiceStreamWrite(mono, n);
+  voiceStreamEnd();
+  f.close();
+  return true;
+}
+
+void voiceStreamBegin(uint32_t sampleRate) {
+  i2s_set_sample_rates(I2S_NUM_1, sampleRate);
   digitalWrite(PIN_AMP_SD, HIGH);
-  while ((n = f.read((uint8_t*)mono, sizeof(mono)) / 2) > 0) {
-    for (size_t i = 0; i < n; i++) stereo[2 * i] = stereo[2 * i + 1] = mono[i];
+}
+
+void voiceStreamWrite(const int16_t* mono, size_t samples) {
+  int16_t stereo[512];
+  size_t written;
+  for (size_t i = 0; i < samples; i += 256) {
+    size_t n = min((size_t)256, samples - i);
+    for (size_t j = 0; j < n; j++) stereo[2 * j] = stereo[2 * j + 1] = mono[i + j];
     i2s_write(I2S_NUM_1, stereo, n * 4, &written, portMAX_DELAY);
   }
+}
+
+void voiceStreamEnd() {
   i2s_zero_dma_buffer(I2S_NUM_1);
   delay(30);                                     // let the last DMA buffer drain before muting
   digitalWrite(PIN_AMP_SD, LOW);
-  f.close();
-  return true;
+  i2s_set_sample_rates(I2S_NUM_1, 16000);
 }

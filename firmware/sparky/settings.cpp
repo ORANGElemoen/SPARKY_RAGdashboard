@@ -61,3 +61,15 @@ void settingsBegin() {
 
 String settingsServerUrl() { return serverUrl; }
 String settingsDeviceKey() { return deviceKey; }
+
+// One conversation per device, never shared (docs/PROTOCOL.md, "Sessions").
+String settingsSessionId() {
+  String sid = prefs.getString("sid", "");
+  if (sid.isEmpty()) {
+    char buf[33];
+    for (int i = 0; i < 4; i++) snprintf(buf + 8 * i, 9, "%08lx", (unsigned long)esp_random());
+    sid = buf;
+    prefs.putString("sid", sid);
+  }
+  return sid;
+}

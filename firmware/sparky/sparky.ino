@@ -1,16 +1,20 @@
-// Sparky firmware - faces, voice lines and live preview from Sparky Studio over Wi-Fi.
-// See README.md. The voice-question part (record -> /api/v1/voice/query -> play the
-// answer) plugs into the marked spots; it is a separate task.
+// Sparky firmware - push-to-talk voice questions, plus faces, voice lines and live preview
+// from Sparky Studio over Wi-Fi. See README.md.
 #include <Arduino.h>
 #include <LittleFS.h>
 #include <WiFi.h>
+#include "ask.h"
 #include "config.h"
 #include "faces.h"
+#include "mic.h"
 #include "network_task.h"
 #include "settings.h"
 #include "voice.h"
 
+SET_LOOP_TASK_STACK_SIZE(16 * 1024);                        // the question/answer HTTP call runs in loop()
 static uint32_t previewUntil = 0;
+
+static bool buttonHeld() { return digitalRead(PIN_BUTTON) == LOW; }
 
 void setup() {
   Serial.begin(115200);
@@ -18,6 +22,7 @@ void setup() {
   if (!LittleFS.begin(true)) Serial.println("LittleFS failed");
   facesBegin();
   voiceBegin();
+  micBegin();
   settingsBegin();
   Serial.printf("Wi-Fi %s, server %s, flash free %u bytes\n", WiFi.isConnected() ? "OK" : "FAILED",
                 settingsServerUrl().c_str(), (unsigned)(LittleFS.totalBytes() - LittleFS.usedBytes()));
@@ -30,12 +35,14 @@ void setup() {
 void loop() {
   if (digitalRead(PIN_BUTTON) == LOW) {
     sparkyIdle = false;                                      // no syncing while Sparky is busy
-    facesShowMood(MOOD_LISTENING);
-    while (digitalRead(PIN_BUTTON) == LOW) delay(10);        // (recording happens here in the voice-question task)
+    previewUntil = 0;
+    AskResult result = askQuestion(buttonHeld);              // listen -> think -> talk
     uint8_t mood;
-    voicePlay("button_release", &mood);                      // instant "Hmm, let me think!" while the answer is fetched
-    facesShowMood(MOOD_THINKING);
-    // (send the recording, play the answer with MOOD_TALKING, then fall through to idle)
+    if (result == ASK_NO_WIFI || result == ASK_SERVER_ERROR) {
+      if (!voicePlay(result == ASK_NO_WIFI ? "wifi_error" : "server_error", &mood)) facesShowMood(MOOD_ERROR);
+      delay(1500);
+    }
+    while (buttonHeld()) delay(10);                          // still held after an 8 s question
     facesShowMood(MOOD_IDLE);
     previewUntil = 0;
     sparkyIdle = true;

@@ -1,10 +1,11 @@
 # STEM Voice Tutor — Hardware Client Protocol
 
-This is the wire protocol for a physical device (ESP32-S3 tutor unit)
-talking to the server directly, as opposed to the browser UI. No firmware
-exists yet — this document exists so firmware can be written against a
-fixed contract instead of guessing, and so the server-side implementation
-in `core/routers/voice.py` has a single source of truth to match.
+This is the wire protocol for a physical device (the Sparky ESP32 unit)
+talking to the server directly, as opposed to the browser UI. The firmware in
+`firmware/sparky/` implements it (`ask.cpp` for the voice question,
+`pack_sync.cpp` for the personality pack), and `scripts/fake_sparky.py` is a
+Python reference client. This document is the single source of truth both
+sides match, along with the server in `core/routers/voice.py`.
 
 **Version: 1.** The `protocol_version` field in every response lets this
 evolve without breaking already-deployed devices — bump it and add a

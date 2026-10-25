@@ -10,11 +10,14 @@ an ack, and long-poll for "Send to Sparky now" faces (printed as LED art).
 Usage:
     python scripts/fake_sparky.py --key <device API key from the Devices page>
     python scripts/fake_sparky.py --key ... --once      # one sync, then exit
+    python scripts/fake_sparky.py --key ... --ask question.wav   # ask like the button does
 """
 import argparse
 import json
 import shutil
+import struct
 import time
+import uuid
 from pathlib import Path
 from typing import Dict, List, Tuple
 
@@ -27,6 +30,17 @@ def plan_sync(manifest: dict, have: Dict[str, int]) -> Tuple[List[dict], List[st
     download = [v for i, v in wanted.items() if have.get(i) != v["bytes"]]
     delete = sorted(i for i in have if i not in wanted)
     return download, delete
+
+
+def parse_answer(body: bytes) -> Tuple[dict, List[bytes]]:
+    """Split an application/x-tutor-voice body into (metadata, [wav frame, ...]) - what
+    AnswerSink in firmware/sparky/ask.cpp does on the fly (docs/PROTOCOL.md)."""
+    blocks, pos = [], 0
+    while pos < len(body):
+        (n,) = struct.unpack_from(">I", body, pos)
+        blocks.append(body[pos + 4:pos + 4 + n])
+        pos += 4 + n
+    return json.loads(blocks[0]), blocks[1:]
 
 
 def face_art(rows: List[str]) -> str:
@@ -77,6 +91,24 @@ class FakeSparky:
         print(f"updated to pack {manifest['pack_version']}: {len(manifest['faces'])} faces, "
               f"{len(download)} downloaded, {len(delete)} deleted")
 
+    def ask(self, wav_path: Path) -> None:
+        """Push to talk, exactly as the ESP32 sends it: multipart audio + session_id."""
+        session = self.folder / "session.txt"
+        if not session.exists():
+            session.write_text(uuid.uuid4().hex)
+        t0 = time.time()
+        r = self.http.post("/api/v1/voice/query", headers={"Accept": "application/x-tutor-voice"},
+                           data={"session_id": session.read_text()},
+                           files={"audio": ("question.wav", wav_path.read_bytes(), "audio/wav")}, timeout=120)
+        r.raise_for_status()
+        meta, frames = parse_answer(r.content)
+        print(f"heard: {meta['transcript']!r}\nanswer ({meta['frame_count']} sentences, {time.time() - t0:.1f} s): "
+              f"{meta['answer_text']}")
+        assert len(frames) == meta["frame_count"], "frame count mismatch"
+        for i, frame in enumerate(frames):
+            (self.folder / f"answer_{i}.wav").write_bytes(frame)
+        print(f"saved {len(frames)} answer sentences to {self.folder}")
+
     def listen(self) -> None:
         r = self.http.get("/api/v1/device/commands", params={"wait": 25})
         r.raise_for_status()
@@ -95,8 +127,12 @@ def main():
     ap.add_argument("--key", required=True, help="device API key from the Devices page")
     ap.add_argument("--folder", default="data/fake_sparky")
     ap.add_argument("--once", action="store_true")
+    ap.add_argument("--ask", type=Path, help="a WAV file to ask as a voice question, then exit")
     args = ap.parse_args()
     sparky = FakeSparky(args.base_url, args.key, Path(args.folder))
+    if args.ask:
+        sparky.ask(args.ask)
+        return
     sparky.sync()
     if args.once:
         return
