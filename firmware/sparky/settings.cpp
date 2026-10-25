@@ -49,7 +49,7 @@ void settingsBegin() {
   wm.setConfigPortalTimeout(300);
   wm.setAPCallback([](WiFiManager*) {                       // no Wi-Fi: say so, so nobody waits in silence
     uint8_t mood;
-    facesShowMood(MOOD_THINKING);
+    facesShowMood(MOOD_WIFI_SETUP);                       // stays up while the hotspot is open
     if (!voicePlay("wifi_setup", &mood)) voiceChirp(700, 400, 300);   // "Looking for a network..."
     Serial.println("[wifi] no network - setup hotspot 'Sparky Setup' is open");
   });

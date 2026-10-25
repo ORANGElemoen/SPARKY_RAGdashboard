@@ -9,7 +9,8 @@
 #include <LittleFS.h>
 #include <MD_MAX72xx.h>
 
-const char* const MOOD_NAMES[MOOD_COUNT] = {"idle", "listening", "thinking", "talking", "happy", "error", "startup"};
+const char* const MOOD_NAMES[MOOD_COUNT] = {"idle", "listening", "thinking", "talking", "happy", "error", "startup",
+                                            "wifi_connected", "wifi_setup", "wifi_error"};
 
 static MD_MAX72XX mx(MD_MAX72XX::FC16_HW, PIN_MATRIX_CS, MATRIX_DEVICES);
 static uint32_t moodFaces[MOOD_COUNT][8];
@@ -63,7 +64,7 @@ bool facesLoad() {
   for (uint8_t m = 0; m < MOOD_COUNT; m++) {
     const char* faceName = doc["moods"][MOOD_NAMES[m]] | "";
     JsonArray rows = doc["faces"][faceName];
-    if (rows.size() != 8 && m == MOOD_STARTUP) rows = doc["faces"][doc["moods"]["happy"] | ""];   // older server
+    if (rows.size() != 8 && m >= MOOD_STARTUP) rows = doc["faces"][doc["moods"]["happy"] | ""];   // older server
     if (rows.size() != 8) { useFallback(); return false; }
     for (uint8_t r = 0; r < 8; r++) {
       const char* row = rows[r] | "";
@@ -213,7 +214,14 @@ static void animator(void*) {
           if ((now / 300) % 3 == 0) shift(f, 0, -1);  // bouncy
           break;
         case MOOD_STARTUP:
-          led = 255;                                  // shown still: it is often a word (SPARKY)
+        case MOOD_WIFI_CONNECTED:
+          led = 255;                                  // shown still: words and symbols
+          break;
+        case MOOD_WIFI_SETUP:
+          led = (now / 600) % 2 ? 255 : 0;            // slow blink: "come and help me"
+          break;
+        case MOOD_WIFI_ERROR:
+          led = (now / 120) % 2 ? 255 : 0;            // fast blink
           break;
         case MOOD_ERROR:
           led = (now / 70) % 2 ? 255 : 0;             // fast blink

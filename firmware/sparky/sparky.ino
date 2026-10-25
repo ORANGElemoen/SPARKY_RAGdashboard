@@ -31,12 +31,12 @@ void setup() {
   Serial.printf("Wi-Fi %s, server %s, flash free %u bytes\n", WiFi.isConnected() ? "OK" : "FAILED",
                 settingsServerUrl().c_str(), (unsigned)(LittleFS.totalBytes() - LittleFS.usedBytes()));
   if (WiFi.isConnected()) {
-    facesShowMood(MOOD_HAPPY);
+    facesShowMood(MOOD_WIFI_CONNECTED);
     if (!voicePlay("wifi_connected", &mood)) voiceChirp(500, 1000, 200);   // "Wi-Fi connected!"
-    delay(800);
+    delay(1200);
     facesShowMood(MOOD_IDLE);
   } else {
-    facesShowMood(MOOD_ERROR);
+    facesShowMood(MOOD_WIFI_ERROR);
     if (!voicePlay("wifi_error", &mood)) voiceChirp(220, 150, 300);
   }
   networkBegin();

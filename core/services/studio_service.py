@@ -30,7 +30,8 @@ SYNC_STORE = STUDIO_DIR / "device_sync.json"   # which pack each device reported
 FACES_FORMAT = "sparky-faces/1"
 
 # Face states from the design report (REQ-F-09), in firmware enum order.
-MOODS = ["idle", "listening", "thinking", "talking", "happy", "error", "startup"]
+MOODS = ["idle", "listening", "thinking", "talking", "happy", "error", "startup",
+         "wifi_connected", "wifi_setup", "wifi_error"]
 # When each voice line is meant to play on the device.
 TRIGGERS = {
     "button_release": "When the button is let go (covers the wait for the answer)",
@@ -77,10 +78,42 @@ DEFAULT_FACES: Dict[str, List[str]] = {
     "Sleepy / idle": _face("lid", "lid", 4, 20, 4, 4),
     "Thinking (eyes up)": _face("look", "look", 8, 24, 0, 0),
     "Error  X X": _face("cross", "cross", 4, 20, 0, 0),
+    # Wi-Fi status at startup: the symbol plus a tick, a question mark or a cross
+    "Wi-Fi connected": [
+        ".....#####..................#...",
+        "...##.....##...............##...",
+        "..#.........#.............##....",
+        ".....#####........#......##.....",
+        "....#.....#.......##....##......",
+        "......###..........##..##.......",
+        "....................####........",
+        ".......#.............##.........",
+    ],
+    "Looking for Wi-Fi": [
+        ".......#####..........####......",
+        ".....##.....##.......##..##.....",
+        "....#.........#..........##.....",
+        ".......#####............##......",
+        "......#.....#..........##.......",
+        "........###............##.......",
+        "................................",
+        ".........#.............##.......",
+    ],
+    "No Wi-Fi": [
+        ".......#####........##....##....",
+        ".....##.....##.......##..##.....",
+        "....#.........#.......####......",
+        ".......#####...........##.......",
+        "......#.....#.........####......",
+        "........###..........##..##.....",
+        "....................##....##....",
+        ".........#......................",
+    ],
 }
 DEFAULT_MOODS = {
     "idle": "Sleepy / idle", "listening": "Neutral (listening)", "thinking": "Thinking (eyes up)",
     "talking": "Happy  ^ ^", "happy": "Happy  ^ ^", "error": "Error  X X", "startup": "Happy  ^ ^",
+    "wifi_connected": "Wi-Fi connected", "wifi_setup": "Looking for Wi-Fi", "wifi_error": "No Wi-Fi",
 }
 
 _ROW = re.compile(r"^[#.]{32}$")
