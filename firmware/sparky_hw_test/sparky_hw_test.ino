@@ -249,14 +249,23 @@ void testTouch() {
   uint32_t base = 0;
   for (int i = 0; i < 40; i++) { base += touchRead(PIN_TOUCH); delay(50); }
   base /= 40;
-  uint32_t threshold = base * 7 / 10;
-  Serial.printf("  untouched reading %lu, touch below %lu. Now tap it 50 times. q = stop\n", (unsigned long)base, (unsigned long)threshold);
+  // A touch moves the reading away from the untouched value (down on the ESP32, up on some
+  // setups), so count a change in either direction: 20% away = touched, back within 10% = released.
+  uint32_t on = max<uint32_t>(base / 5, 3), off = max<uint32_t>(base / 10, 2);
+  Serial.printf("  untouched reading %lu. A tap = more than %lu away from it. Tap 50 times. q = stop\n",
+                (unsigned long)base, (unsigned long)on);
   int taps = 0;
   bool touched = false;
+  uint32_t lastShow = 0;
   while (!stopRequested() && taps < 50) {
     uint32_t v = touchRead(PIN_TOUCH);
-    if (!touched && v < threshold) { touched = true; Serial.printf("  tap %d (reading %lu)\n", ++taps, (unsigned long)v); }
-    if (touched && v > base * 85 / 100) touched = false;   // hysteresis
+    uint32_t away = v > base ? v - base : base - v;
+    if (!touched && away > on) { touched = true; Serial.printf("  tap %d (reading %lu)\n", ++taps, (unsigned long)v); }
+    if (touched && away < off) touched = false;    // hysteresis
+    if (millis() - lastShow > 300) {                // live reading, so a weak touch is visible too
+      lastShow = millis();
+      Serial.printf("    reading %4lu  (untouched %lu)\n", (unsigned long)v, (unsigned long)base);
+    }
     delay(20);
   }
   Serial.printf("  %d taps counted. PASS if it matches, with none while you weren't touching.\n", taps);
