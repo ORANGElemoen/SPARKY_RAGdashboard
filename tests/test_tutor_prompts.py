@@ -74,3 +74,14 @@ def test_short_replies_to_sparkys_questions_are_valid():
     for reply in ["No", "8", "Ja"]:
         assert svc._is_valid_query(reply)
     assert not svc._is_valid_query("   ")
+
+
+def test_long_answers_keep_three_sentences_and_the_closing_question():
+    six = ("Earth spins like a ball. One side faces the Sun. That side has day. "
+           "The other side has night. It takes a whole day to turn. Can you guess how long that is?")
+    assert rag._limit_sentences(six) == ("Earth spins like a ball. One side faces the Sun. That side has day. "
+                                         "Can you guess how long that is?")
+    five_no_question = "One. Two! Three. Four. Five."
+    assert rag._limit_sentences(five_no_question) == "One. Two! Three. Four."
+    four = "Plants need light. They make food. Leaves are green. What colour is a leaf?"
+    assert rag._limit_sentences(four) == four          # within the limit: untouched

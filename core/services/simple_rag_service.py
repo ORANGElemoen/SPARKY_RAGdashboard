@@ -172,6 +172,21 @@ def _trim_to_complete_sentence(text: str) -> str:
     return text
 
 
+MAX_ANSWER_SENTENCES = 4  # the prompt asks for 2-4; small models sometimes run on (~7% of answers)
+_SENTENCE_RE = re.compile(r"(?<=[.!?])\s+")
+
+
+def _limit_sentences(text: str, limit: int = MAX_ANSWER_SENTENCES) -> str:
+    """Safety net for the prompt's length rule: keep the first sentences, plus the closing
+    question if there is one - the question is what keeps the child thinking."""
+    sentences = [s for s in _SENTENCE_RE.split(text.strip()) if s]
+    if len(sentences) <= limit:
+        return text
+    if sentences[-1].endswith("?"):
+        return " ".join(sentences[: limit - 1] + sentences[-1:])
+    return " ".join(sentences[:limit])
+
+
 class RAGConfig:
     """Simple configuration with environment variables"""
 
@@ -472,7 +487,7 @@ class SimpleRAGService:
             )
 
             answer_text = response if response else strings["no_answer_generated"]
-            answer_text = _soften_refusal(_trim_to_complete_sentence(answer_text), strings)
+            answer_text = _limit_sentences(_soften_refusal(_trim_to_complete_sentence(answer_text), strings))
             spoken_text = answer_text  # Citations below are for display, not speech
 
             # Add source footer - only when an answer was actually generated,
@@ -549,7 +564,7 @@ class SimpleRAGService:
             )
 
             answer_text = response if response else strings["no_answer_generated"]
-            answer_text = _soften_refusal(_trim_to_complete_sentence(answer_text), strings)
+            answer_text = _limit_sentences(_soften_refusal(_trim_to_complete_sentence(answer_text), strings))
 
             return {
                 "text": answer_text,
