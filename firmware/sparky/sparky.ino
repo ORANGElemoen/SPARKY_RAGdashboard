@@ -39,7 +39,10 @@ void loop() {
     AskResult result = askQuestion(buttonHeld);              // listen -> think -> talk
     uint8_t mood;
     if (result == ASK_NO_WIFI || result == ASK_SERVER_ERROR) {
-      if (!voicePlay(result == ASK_NO_WIFI ? "wifi_error" : "server_error", &mood)) facesShowMood(MOOD_ERROR);
+      facesShowMood(MOOD_ERROR);
+      voiceChirp(220, 150, 220);                             // "bonk"
+      voicePlay(result == ASK_NO_WIFI ? "wifi_error" : "server_error", &mood);
+      facesShowMood(MOOD_ERROR);
       delay(1500);
     }
     while (buttonHeld()) delay(10);                          // still held after an 8 s question

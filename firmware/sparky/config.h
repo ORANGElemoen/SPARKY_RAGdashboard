@@ -21,6 +21,7 @@
 constexpr int PIN_AMP_BCLK = 27, PIN_AMP_LRC = 26, PIN_AMP_DIN = 22, PIN_AMP_SD = 21;
 constexpr int PIN_MATRIX_CS = 5;              // CLK 18 / DIN 23 are the default VSPI pins
 constexpr int PIN_BUTTON = 14;
+constexpr int PIN_LED = 4;                    // accent LED, wired 3V3 -> 47R -> LED -> GPIO 4 (LOW = on)
 constexpr int PIN_MIC_SCK = 32, PIN_MIC_WS = 25, PIN_MIC_SD = 33;   // INMP441, L/R pin to GND
 constexpr int MATRIX_DEVICES = 4;             // 4 x 8x8 = 32 x 8
 constexpr uint32_t SYNC_EVERY_MS = 5UL * 60UL * 1000UL;

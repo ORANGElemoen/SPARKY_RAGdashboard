@@ -87,9 +87,32 @@ void voiceStreamWrite(const int16_t* mono, size_t samples) {
   size_t written;
   for (size_t i = 0; i < samples; i += 256) {
     size_t n = min((size_t)256, samples - i);
-    for (size_t j = 0; j < n; j++) stereo[2 * j] = stereo[2 * j + 1] = mono[i + j];
+    int peak = 0;
+    for (size_t j = 0; j < n; j++) {
+      stereo[2 * j] = stereo[2 * j + 1] = mono[i + j];
+      peak = max(peak, abs((int)mono[i + j]));
+    }
+    facesSetLevel(min(255, peak >> 6));          // the talking face moves with the voice
     i2s_write(I2S_NUM_1, stereo, n * 4, &written, portMAX_DELAY);
   }
+}
+
+void voiceChirp(int fromHz, int toHz, uint16_t ms) {
+  const uint32_t n = 16000UL * ms / 1000;
+  int16_t buf[256];
+  float phase = 0;
+  voiceStreamBegin(16000);
+  for (uint32_t i = 0; i < n; i += 256) {
+    uint32_t k = min<uint32_t>(256, n - i);
+    for (uint32_t j = 0; j < k; j++) {
+      float t = float(i + j) / n;                // 0..1 through the sound
+      phase += 2 * PI * (fromHz + (toHz - fromHz) * t) / 16000;
+      float env = min(1.0f, min(t, 1 - t) * 10); // quick fade in and out, so no clicks
+      buf[j] = 5000 * env * sinf(phase);
+    }
+    voiceStreamWrite(buf, k);
+  }
+  voiceStreamEnd();
 }
 
 void voiceStreamEnd() {

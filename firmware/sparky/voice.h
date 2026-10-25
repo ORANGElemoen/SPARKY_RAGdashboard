@@ -7,3 +7,4 @@ String voiceLinePath(const char* trigger);                // LittleFS path of a 
 void voiceStreamBegin(uint32_t sampleRate);   // unmutes the amp
 void voiceStreamWrite(const int16_t* mono, size_t samples);
 void voiceStreamEnd();                        // mutes the amp, back to 16 kHz
+void voiceChirp(int fromHz, int toHz, uint16_t ms);   // sound effect: a quick sliding beep

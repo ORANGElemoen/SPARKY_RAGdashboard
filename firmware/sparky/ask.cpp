@@ -199,6 +199,7 @@ AskResult askQuestion(bool (*buttonHeld)()) {
 
   // 1. record, already wrapped in the multipart body
   facesShowMood(MOOD_LISTENING);
+  voiceChirp(500, 900, 120);                     // "bloop": I'm listening (done before the mic starts)
   String head = "--" BOUNDARY "\r\nContent-Disposition: form-data; name=\"session_id\"\r\n\r\n" +
                 settingsSessionId() +
                 "\r\n--" BOUNDARY "\r\nContent-Disposition: form-data; name=\"audio\"; filename=\"question.wav\"\r\n"
@@ -215,6 +216,7 @@ AskResult askQuestion(bool (*buttonHeld)()) {
 #endif
   f.print("\r\n--" BOUNDARY "--\r\n");
   f.close();
+  voiceChirp(900, 500, 90);                      // "blip": got it
   if (samples < 16000UL * MIN_QUESTION_MS / 1000) {
     LittleFS.remove(BODY_PATH);
     return ASK_TOO_SHORT;
