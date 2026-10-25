@@ -7,6 +7,8 @@
 //     (Preferences) instead of being written into the code.
 #include "settings.h"
 #include "config.h"
+#include "faces.h"
+#include "voice.h"
 #include <Preferences.h>
 #include <WiFiManager.h>
 
@@ -45,6 +47,12 @@ void settingsBegin() {
   wm.addParameter(&pKey);
   wm.addParameter(&pClass);
   wm.setConfigPortalTimeout(300);
+  wm.setAPCallback([](WiFiManager*) {                       // no Wi-Fi: say so, so nobody waits in silence
+    uint8_t mood;
+    facesShowMood(MOOD_THINKING);
+    if (!voicePlay("wifi_setup", &mood)) voiceChirp(700, 400, 300);   // "Looking for a network..."
+    Serial.println("[wifi] no network - setup hotspot 'Sparky Setup' is open");
+  });
 
   bool forceSetup = digitalRead(PIN_BUTTON) == LOW;          // hold the button while switching on = set up again
   if (forceSetup || serverUrl.isEmpty() || deviceKey.isEmpty()) wm.startConfigPortal(SETUP_AP_NAME, SETUP_AP_PASSWORD);

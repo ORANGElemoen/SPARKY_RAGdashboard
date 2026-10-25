@@ -35,6 +35,8 @@ MOODS = ["idle", "listening", "thinking", "talking", "happy", "error", "startup"
 TRIGGERS = {
     "button_release": "When the button is let go (covers the wait for the answer)",
     "startup": "When Sparky switches on",
+    "wifi_connected": "Right after Sparky joins the Wi-Fi",
+    "wifi_setup": "No Wi-Fi found: Sparky opened its setup hotspot",
     "wifi_error": "When Sparky can't reach the Wi-Fi",
     "server_error": "When the tutor server doesn't answer",
     "goodbye": "Before going to sleep",
