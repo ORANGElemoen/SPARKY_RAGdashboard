@@ -3,6 +3,7 @@
 Modular RAG System API Server
 Main application entry point with router-based architecture
 """
+import asyncio
 import hashlib
 import hmac
 import logging
@@ -138,6 +139,12 @@ async def lifespan(app: FastAPI):
             raise RuntimeError("Failed to initialize services")
 
         logger.info("All services initialized successfully")
+
+        # Warm up the LLM in the background, so the first question isn't the one that waits
+        # for the model to load (~60 s cold, more than a Sparky device waits for an answer).
+        from .ollama_client import OllamaClient
+
+        asyncio.create_task(asyncio.to_thread(lambda: OllamaClient().preload_model()))
 
         # Initialize security
         logger.info("Initializing security systems...")
