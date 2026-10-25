@@ -12,6 +12,8 @@ and the test sketch in `../sparky_hw_test/`.
 Board: **ESP32 Dev Module**, partition scheme **Default 4MB with spiffs**
 (about 1.3 MB of flash for voice lines, and room for program updates over
 Wi-Fi later). Libraries: WiFiManager, ArduinoJson 7, MD_MAX72XX.
+`build_opt.h` drops HTTPS support from HTTPClient (Sparky only uses plain http on the
+local network) - it saves ~90 KB of program space; keep it.
 
 From a terminal, using the `arduino-cli` that ships with the Arduino IDE
 (no need to open the IDE):
