@@ -10,6 +10,8 @@
 #include <LittleFS.h>
 #include <driver/i2s.h>
 
+static constexpr int DMA_BUFFERS = 8, DMA_FRAMES = 512;
+
 void voiceBegin() {
   pinMode(PIN_AMP_SD, OUTPUT);
   digitalWrite(PIN_AMP_SD, LOW);                 // amplifier muted until a clip plays
@@ -19,8 +21,8 @@ void voiceBegin() {
   cfg.bits_per_sample = I2S_BITS_PER_SAMPLE_16BIT;
   cfg.channel_format = I2S_CHANNEL_FMT_RIGHT_LEFT;
   cfg.communication_format = I2S_COMM_FORMAT_STAND_I2S;
-  cfg.dma_desc_num = 8;
-  cfg.dma_frame_num = 256;
+  cfg.dma_desc_num = DMA_BUFFERS;                // 8 x 512 stereo frames = ~0.19 s at 22 kHz:
+  cfg.dma_frame_num = DMA_FRAMES;                // rides out short Wi-Fi hiccups while streaming
   cfg.tx_desc_auto_clear = true;
   i2s_pin_config_t pins = {};
   pins.mck_io_num = I2S_PIN_NO_CHANGE;
@@ -116,8 +118,10 @@ void voiceChirp(int fromHz, int toHz, uint16_t ms) {
 }
 
 void voiceStreamEnd() {
-  i2s_zero_dma_buffer(I2S_NUM_1);
-  delay(30);                                     // let the last DMA buffer drain before muting
+  // Push the audio still queued in the DMA buffers out with silence, then mute. (Zeroing the
+  // buffers instead throws that audio away: short sounds vanished, clips lost their endings.)
+  static const int16_t silence[DMA_FRAMES] = {};
+  for (int i = 0; i < DMA_BUFFERS; i++) voiceStreamWrite(silence, DMA_FRAMES);
   digitalWrite(PIN_AMP_SD, LOW);
   i2s_set_sample_rates(I2S_NUM_1, 16000);
 }

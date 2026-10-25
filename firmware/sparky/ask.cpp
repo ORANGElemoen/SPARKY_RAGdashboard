@@ -87,6 +87,7 @@ class AnswerSink : public Stream {
   uint32_t need = 0, have = 0;
   char* meta = nullptr;
   bool gotMeta = false, hasOdd = false;
+  uint32_t frameStart = 0, frameRate = 16000;
   uint8_t odd = 0;
 
   size_t take(uint8_t* dst, const uint8_t* p, size_t n) {
@@ -149,6 +150,8 @@ class AnswerSink : public Stream {
             streaming = true;
           }
           voiceStreamBegin(rate);
+          frameStart = millis();
+          frameRate = rate;
           need = frameLen - 44;                  // PCM bytes in this frame
           have = 0;
           hasOdd = false;
@@ -176,6 +179,9 @@ class AnswerSink : public Stream {
         have += k;
         if (have == need) {
           framesPlayed++;
+          // audio length vs. time it took: took > audio means the speaker ran dry (stutter)
+          Serial.printf("[ask] sentence %d: %.1f s of audio took %.1f s\n", framesPlayed,
+                        need / 2.0f / frameRate, (millis() - frameStart) / 1000.0f);
           state = LEN;
           have = 0;
         }
