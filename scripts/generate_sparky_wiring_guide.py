@@ -7,7 +7,7 @@ docs/images/sparky_breadboard_layout.png.
 v3 changes from the report's v2 diagram: the accent LED is a plain 5 mm white LED moved
 from the 5 V rail to the 3.3 V rail (the report's identified risk: GPIO 4 could see more
 than 3.6 V), the ESP32 sits off the breadboard on female-to-male jumpers (on a half breadboard it
-would take half the rows, leaving too few for the parts), amp GAIN is optional.
+would take half the rows, leaving too few for the parts), amp GAIN to GND (12 dB, chosen on the bench).
 Board: ESP-WROOM-32 on a 30-pin dev board (DOIT DevKit V1 layout; 5 V pin is VIN).
 
 Pin map: report Table "ESP32 GPIO allocation" = firmware/sparky/config.h.
@@ -71,7 +71,7 @@ WIRES = [
     ("Amp", "Amp BCLK (row 10)", "ESP32 GPIO 27", "F-M jumper", "amp"),
     ("Amp", "Amp DIN (row 11)", "ESP32 GPIO 22", "F-M jumper", "amp"),
     ("Amp", "Amp SD (row 13)", "ESP32 GPIO 21", "F-M jumper", "amp"),
-    ("Amp", "Amp GAIN (row 12)", "Nothing at first (9 dB). Louder: to GND (12 dB)", "-", "GND"),
+    ("Amp", "Amp GAIN (row 12)", "Top − rail (GND) = 12 dB", "M-M jumper", "GND"),
     ("Amp", "Speaker red / black", "Amp screw terminal + / −", "Speaker's own wires", "amp"),
     ("Mic", "Mic VDD (row 4, bottom)", "Bottom + rail (3.3 V) - NEVER 5 V", "M-M jumper", "3V3"),
     ("Mic", "Mic GND (row 5, bottom)", "Bottom − rail (GND)", "M-M jumper", "GND"),
@@ -79,8 +79,9 @@ WIRES = [
     ("Mic", "Mic SD (row 3, bottom)", "ESP32 GPIO 33", "F-M jumper", "mic"),
     ("Mic", "Mic WS (row 4, top)", "ESP32 GPIO 25", "F-M jumper", "mic"),
     ("Mic", "Mic SCK (row 5, top)", "ESP32 GPIO 32", "F-M jumper", "mic"),
-    ("Button", "Button leg, row 19 top", "ESP32 GPIO 14", "F-M jumper", "button"),
-    ("Button", "Button leg, row 21 bottom (diagonal)", "Bottom − rail (GND)", "M-M jumper", "GND"),
+    ("Button", "Button legs in h19 and h21", "(different rows - same row = always pressed)", "-", "button"),
+    ("Button", "Row 19 (j19)", "ESP32 GPIO 14", "F-M jumper", "button"),
+    ("Button", "Row 21 (j21)", "Top − rail (GND)", "M-M jumper", "GND"),
     ("LED", "47 Ω resistor", "Bottom + rail (3.3 V) to row 24", "Resistor legs", "3V3"),
     ("LED", "LED long leg (+)", "Row 24 (with the resistor)", "LED leg", "led"),
     ("LED", "LED short leg (−, flat side)", "Row 26", "LED leg", "led"),
@@ -152,10 +153,10 @@ def draw_pinout():
     module(ax, lx, 2.05, w, "MAX98357A amp + 3 W speaker", COL["amp"],
            [("VIN", "5 V rail", "5V"), ("GND", "GND", "GND"), ("LRC", "GPIO 26", "amp"),
             ("BCLK", "GPIO 27", "amp"), ("DIN", "GPIO 22", "amp"), ("SD", "GPIO 21 (LOW = mute)", "amp"),
-            ("GAIN", "open = 9 dB, to GND = 12 dB", "GND"), ("+  /  −", "speaker red / black", "amp")])
+            ("GAIN", "GND = 12 dB (100 kΩ to GND = 15 dB)", "GND"), ("+  /  −", "speaker red / black", "amp")])
     module(ax, lx, -2.85, w, "Push-to-talk button", COL["button"],
            [("leg 1", "GPIO 14 (internal pull-up)", "button"), ("leg 2", "GND", "GND")],
-           note="Tactile: use DIAGONAL legs. Arcade: COM + NO")
+           note="Legs in different rows. Arcade button: COM + NO")
     # right column
     module(ax, rx, 6.1, w, "MAX7219 LED matrix 32 x 8 (IN end)", COL["matrix"],
            [("VCC", "5 V rail", "5V"), ("GND", "GND", "GND"), ("DIN", "GPIO 23", "matrix"),
@@ -287,14 +288,15 @@ def draw_layout():
     flag(ax, hole("i", 11), "GPIO 22", "amp", True)
     flag(ax, hole("i", 13), "GPIO 21", "amp", True)
     wire(ax, hole("j", 14), hole("top-", 14), "GND")
+    wire(ax, hole("j", 12), hole("top-", 12), "GND")
     wire(ax, hole("j", 15), hole("top+", 15), "5V")
     ax.text(12, -0.9, "speaker  + red / − black", ha="center", fontsize=8.5, color=COL["amp"], fontweight="bold")
 
-    # button: tactile switch across the gap, rows 19-21, diagonal legs
-    chip(ax, 18.6, 21.4, 1.6, 5.4, COL["button"], "BUTTON", fs=8)
-    pins(ax, [hole("f", 19), hole("e", 21)], ["leg", "leg"], +1)
-    flag(ax, hole("i", 19), "GPIO 14", "button", True)
-    wire(ax, hole("a", 21), hole("bot-", 21), "GND")
+    # button: 2-leg tactile switch in the top half, legs in h19 and h21 (different rows)
+    chip(ax, 18.55, 21.45, 5.5, 7.5, COL["button"], "BUTTON", fs=8)
+    pins(ax, [hole("h", 19), hole("h", 21)], ["leg", "leg"], +1)
+    flag(ax, hole("j", 19), "GPIO 14", "button", True)
+    wire(ax, hole("j", 21), hole("top-", 21), "GND")
 
     # LED + resistor (bottom half, rows 24-26)
     ax.plot([24, 24], [RAIL["bot+"], COLY["b"]], color="#a16207", lw=2, zorder=4)
@@ -345,7 +347,7 @@ def build_pdf():
                    "<b>The ESP32 sits off the breadboard</b>, on female-to-male jumpers. On the half breadboard it "
                    "would take half the rows and leave at most one hole per pin - no room left for the parts.",
                    "<b>Drawn for your 30-pin ESP32 board</b> (ESP-WROOM-32). Its 5 V pin is labelled <b>VIN</b>.",
-                   "<b>Amp GAIN is optional</b>: open = 9 dB to start, to GND = 12 dB if Sparky is too quiet.",
+                   "<b>Amp GAIN to GND</b> (12 dB) - tested on the bench as clear and loud enough. Louder still: 100 kΩ from GAIN to GND (15 dB).",
                    "<b>The LED is a plain white 5 mm LED</b> (what was bought), not a WS2812B."]),
           Paragraph("<b>You still need</b> (not in the orders):", P),
           table([["Item", "How many", "Why / where to get it"],
@@ -376,9 +378,9 @@ def build_pdf():
                    "sides. Both rows on the same side shorts the pins together. Sound hole facing up.",
                    "<b>Amp</b> pins go into column f, rows 9-15, with the board lying over the gap. Connect through "
                    "the free holes g-j in the same rows.",
-                   "<b>Button:</b> a tactile switch across the gap, wired by <i>diagonally opposite</i> legs - that "
-                   "always works, whichever way round it is. The arcade button replaces it later (its COM and NO "
-                   "terminals take the same two wires)."], SMALL),
+                   "<b>Button:</b> the 2-leg tactile switch sits in the top half with its legs in two "
+                   "<i>different</i> rows (19 and 21) - both legs in one row reads as pressed all the time. The "
+                   "arcade button replaces it later (its COM and NO terminals take the same two wires)."], SMALL),
           PageBreak()]
 
     rows = [["#", "Part", "From", "To", "Wire", "Done"]]
@@ -419,7 +421,7 @@ def build_pdf():
                     "should hear yourself. Test 5 counts samples for 10 s: about 16 000 per second.", P),
           Paragraph("Step E - button (M-07) -> test 6", H3),
           Paragraph("Press 100 times; the count must end at exactly 100. It counts by itself without "
-                    "pressing = the button is wired to the wrong pair of legs (use diagonal legs).", P),
+                    "pressing = both legs are in the same row.", P),
           Paragraph("Step F - accent LED and touch pad (M-20) -> tests 8 and 7", H3),
           Paragraph("Test 8 blinks three times, then pulses. Test 7 calibrates for 2 s (don't touch), then counts "
                     "50 taps on the loose jumper end.", P),
@@ -439,11 +441,12 @@ def build_pdf():
                  ["Faces mirrored or upside down", "SPARKY_FLIP_X / SPARKY_FLIP_Y (step B)"],
                  ["No sound", "Amp VIN not on 5 V; SD not on GPIO 21; speaker not tight in the terminal"],
                  ["Constant hiss", "SD (mute) not connected - the amp is never muted"],
-                 ["Distorted or too loud", "Leave GAIN open (9 dB); move the speaker away from the mic"],
+                 ["Distorted or too loud", "Unplug the GAIN jumper (9 dB); move the speaker away from the mic"],
+                 ["Too quiet", "GAIN to GND (12 dB); 100 kΩ from GAIN to GND (15 dB)"],
                  ["Mic level always 0", "VDD not on 3.3 V; SCK / WS / SD swapped; mic not straddling the gap"],
                  ["Mic level always full", "GND missing; L/R floating (tie it to GND)"],
                  ["Recording sounds fast or slow", "Test 5 reads far from 16 000: check SCK and WS"],
-                 ["Button counts by itself", "Wrong legs - use diagonal legs; GPIO 14 wire loose"],
+                 ["Button counts by itself", "Both legs in the same row; GPIO 14 wire loose"],
                  ["LED never lights", "LED backwards (long leg goes to the resistor); resistor in the wrong row"],
                  ["Touch counts without touching", "Loose wire too long or near the matrix cable - shorten it"],
                  ["Restarts when the matrix lights", "Brownout - stronger 5 V supply, lower brightness"]],
