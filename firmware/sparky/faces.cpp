@@ -9,7 +9,7 @@
 #include <LittleFS.h>
 #include <MD_MAX72xx.h>
 
-const char* const MOOD_NAMES[MOOD_COUNT] = {"idle", "listening", "thinking", "talking", "happy", "error"};
+const char* const MOOD_NAMES[MOOD_COUNT] = {"idle", "listening", "thinking", "talking", "happy", "error", "startup"};
 
 static MD_MAX72XX mx(MD_MAX72XX::FC16_HW, PIN_MATRIX_CS, MATRIX_DEVICES);
 static uint32_t moodFaces[MOOD_COUNT][8];
@@ -63,6 +63,7 @@ bool facesLoad() {
   for (uint8_t m = 0; m < MOOD_COUNT; m++) {
     const char* faceName = doc["moods"][MOOD_NAMES[m]] | "";
     JsonArray rows = doc["faces"][faceName];
+    if (rows.size() != 8 && m == MOOD_STARTUP) rows = doc["faces"][doc["moods"]["happy"] | ""];   // older server
     if (rows.size() != 8) { useFallback(); return false; }
     for (uint8_t r = 0; r < 8; r++) {
       const char* row = rows[r] | "";
@@ -211,6 +212,9 @@ static void animator(void*) {
           led = 255;
           if ((now / 300) % 3 == 0) shift(f, 0, -1);  // bouncy
           break;
+        case MOOD_STARTUP:
+          led = 255;                                  // shown still: it is often a word (SPARKY)
+          break;
         case MOOD_ERROR:
           led = (now / 70) % 2 ? 255 : 0;             // fast blink
           if (inMood < 700) shift(f, (now / 80) % 2 ? 1 : -1, 0);   // head shake
@@ -232,7 +236,7 @@ static void animator(void*) {
 
 void facesBegin() {
   mx.begin();
-  mx.control(MD_MAX72XX::INTENSITY, 3);      // low brightness keeps current (and USB brownouts) down
+  mx.control(MD_MAX72XX::INTENSITY, MATRIX_BRIGHTNESS);
   ledcAttach(PIN_LED, 5000, 8);
   setLed(0);
   facesLoad();

@@ -27,8 +27,15 @@ void setup() {
   Serial.printf("Wi-Fi %s, server %s, flash free %u bytes\n", WiFi.isConnected() ? "OK" : "FAILED",
                 settingsServerUrl().c_str(), (unsigned)(LittleFS.totalBytes() - LittleFS.usedBytes()));
   uint8_t mood;
-  voicePlay(WiFi.isConnected() ? "startup" : "wifi_error", &mood);
-  facesShowMood(WiFi.isConnected() ? MOOD_IDLE : MOOD_ERROR);
+  if (WiFi.isConnected()) {
+    facesShowMood(MOOD_STARTUP);                             // e.g. the SPARKY face
+    voicePlay("startup", &mood);                             // "Sparky here!" (shows its own mood's face)
+    delay(1500);
+    facesShowMood(MOOD_IDLE);
+  } else {
+    facesShowMood(MOOD_ERROR);
+    voicePlay("wifi_error", &mood);
+  }
   networkBegin();
 }
 

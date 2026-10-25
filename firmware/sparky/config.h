@@ -24,6 +24,7 @@ constexpr int PIN_BUTTON = 14;
 constexpr int PIN_LED = 4;                    // accent LED, wired 3V3 -> 47R -> LED -> GPIO 4 (LOW = on)
 constexpr int PIN_MIC_SCK = 32, PIN_MIC_WS = 25, PIN_MIC_SD = 33;   // INMP441, L/R pin to GND
 constexpr int MATRIX_DEVICES = 4;             // 4 x 8x8 = 32 x 8
+constexpr int MATRIX_BRIGHTNESS = 0;          // 0 (dimmest) - 15; low also keeps USB current down
 constexpr uint32_t SYNC_EVERY_MS = 5UL * 60UL * 1000UL;
 constexpr int LONG_POLL_SECONDS = 25;
 constexpr size_t FLASH_MARGIN_BYTES = 32 * 1024;   // never fill LittleFS completely

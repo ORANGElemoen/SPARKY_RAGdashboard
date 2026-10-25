@@ -30,7 +30,7 @@ SYNC_STORE = STUDIO_DIR / "device_sync.json"   # which pack each device reported
 FACES_FORMAT = "sparky-faces/1"
 
 # Face states from the design report (REQ-F-09), in firmware enum order.
-MOODS = ["idle", "listening", "thinking", "talking", "happy", "error"]
+MOODS = ["idle", "listening", "thinking", "talking", "happy", "error", "startup"]
 # When each voice line is meant to play on the device.
 TRIGGERS = {
     "button_release": "When the button is let go (covers the wait for the answer)",
@@ -78,7 +78,7 @@ DEFAULT_FACES: Dict[str, List[str]] = {
 }
 DEFAULT_MOODS = {
     "idle": "Sleepy / idle", "listening": "Neutral (listening)", "thinking": "Thinking (eyes up)",
-    "talking": "Happy  ^ ^", "happy": "Happy  ^ ^", "error": "Error  X X",
+    "talking": "Happy  ^ ^", "happy": "Happy  ^ ^", "error": "Error  X X", "startup": "Happy  ^ ^",
 }
 
 _ROW = re.compile(r"^[#.]{32}$")
