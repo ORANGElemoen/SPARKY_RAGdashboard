@@ -140,7 +140,7 @@
                 <h2>4. Your Sparkys</h2>
                 <p class="hint">Sparkys update themselves over Wi-Fi when nobody is talking to them. "Up to date" means a Sparky already has everything on this page.</p>
                 <table>
-                    <thead><tr><th>Sparky</th><th>Status</th><th>Last seen</th><th>Space left</th></tr></thead>
+                    <thead><tr><th>Sparky</th><th>Status</th><th>Wi-Fi</th><th>Last answer</th><th>Last seen</th><th>Space left</th></tr></thead>
                     <tbody id="devices"></tbody>
                 </table>
             </section>
@@ -359,12 +359,16 @@ async function loadDevices() {
     $('previewDevice').replaceChildren(...(active.length ? active.map(d => h('option', {value: d.id}, d.name))
                                                           : [h('option', {value: ''}, 'No Sparkys registered yet')]));
     const body = $('devices'); body.replaceChildren();
-    if (!active.length) body.append(h('tr', {}, h('td', {colSpan: 4, class: 'muted'}, 'Register a Sparky on the Devices page first.')));
+    if (!active.length) body.append(h('tr', {}, h('td', {colSpan: 6, class: 'muted'}, 'Register a Sparky on the Devices page first.')));
     for (const d of active) {
         const status = d.error ? `Problem: ${d.error}` : !d.pack_version ? 'Never updated yet'
                      : d.up_to_date ? 'Up to date' : 'Waiting to update';
         const space = d.free_bytes == null ? '-' : `${Math.round(d.free_bytes / 1024)} KB`;
-        body.append(h('tr', {}, h('td', {}, d.name), h('td', {}, status), h('td', {class: 'muted'}, d.last_seen_at || 'never'), h('td', {}, space)));
+        const wifi = d.rssi == null ? '-' : `${d.rssi} dBm (${d.rssi >= -60 ? 'strong' : d.rssi >= -70 ? 'OK' : d.rssi >= -80 ? 'weak' : 'very weak'})`;
+        const answer = d.answer_stalls == null ? '-' : d.answer_stalls === 0 ? 'smooth'
+                     : `${d.answer_stalls} stutter${d.answer_stalls > 1 ? 's' : ''} (${(d.answer_stall_ms / 1000).toFixed(1)} s)`;
+        body.append(h('tr', {}, h('td', {}, d.name), h('td', {}, status), h('td', {}, wifi), h('td', {}, answer),
+                         h('td', {class: 'muted'}, d.last_seen_at || 'never'), h('td', {}, space)));
     }
 }
 $('previewBtn').onclick = async () => {

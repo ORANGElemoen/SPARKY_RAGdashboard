@@ -34,6 +34,13 @@ class PackAck(BaseModel):
     error: Optional[str] = Field(None, max_length=200)
 
 
+class DeviceStatus(BaseModel):
+    rssi: Optional[int] = Field(None, ge=-127, le=0)            # Wi-Fi signal, dBm
+    answer_audio_s: Optional[float] = Field(None, ge=0, le=600)  # last answer: seconds of speech
+    answer_stalls: Optional[int] = Field(None, ge=0)            # times the speaker ran dry
+    answer_stall_ms: Optional[int] = Field(None, ge=0)          # total silence from those
+
+
 @router.get("/pack")
 async def get_pack(request: Request, device: Device = Depends(require_device)):
     pack = studio.build_pack()
@@ -55,6 +62,12 @@ async def get_pack_voice(line_id: str, device: Device = Depends(require_device))
 @router.post("/pack/ack")
 async def ack_pack(body: PackAck, device: Device = Depends(require_device)):
     studio.record_device_sync(device.id, body.pack_version, body.free_bytes, body.error)
+    return {"ok": True}
+
+
+@router.post("/status")
+async def device_status(body: DeviceStatus, device: Device = Depends(require_device)):
+    studio.record_device_status(device.id, body.model_dump(exclude_none=True))
     return {"ok": True}
 
 

@@ -386,9 +386,18 @@ def device_sync() -> Dict[str, Dict]:
 
 
 def record_device_sync(device_id: int, pack_version: str, free_bytes: int, error: Optional[str] = None) -> None:
+    _update_device(device_id, {"pack_version": pack_version, "free_bytes": int(free_bytes), "error": error,
+                               "at": datetime.now(timezone.utc).isoformat(timespec="seconds")})
+
+
+def record_device_status(device_id: int, status: Dict) -> None:
+    """What a Sparky reports about itself: Wi-Fi signal, and how smoothly its last answer played."""
+    _update_device(device_id, {**status, "status_at": datetime.now(timezone.utc).isoformat(timespec="seconds")})
+
+
+def _update_device(device_id: int, fields: Dict) -> None:
     sync = device_sync()
-    sync[str(device_id)] = {"pack_version": pack_version, "free_bytes": int(free_bytes), "error": error,
-                            "at": datetime.now(timezone.utc).isoformat(timespec="seconds")}
+    sync.setdefault(str(device_id), {}).update(fields)
     STUDIO_DIR.mkdir(parents=True, exist_ok=True)
     tmp = SYNC_STORE.with_suffix(".tmp")
     tmp.write_text(json.dumps(sync, indent=1), encoding="utf-8")

@@ -161,7 +161,9 @@ async def list_studio_devices():
         s = sync.get(str(d.id), {})
         out.append({"id": d.id, "name": d.name, "last_seen_at": d.last_seen_at, "revoked": d.revoked_at is not None,
                     "pack_version": s.get("pack_version"), "up_to_date": s.get("pack_version") == current,
-                    "free_bytes": s.get("free_bytes"), "error": s.get("error"), "synced_at": s.get("at")})
+                    "free_bytes": s.get("free_bytes"), "error": s.get("error"), "synced_at": s.get("at"),
+                    "rssi": s.get("rssi"), "answer_audio_s": s.get("answer_audio_s"),
+                    "answer_stalls": s.get("answer_stalls"), "answer_stall_ms": s.get("answer_stall_ms")})
     return {"pack_version": current, "devices": out}
 
 

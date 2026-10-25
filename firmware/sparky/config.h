@@ -37,6 +37,9 @@ constexpr uint32_t HAPPY_AFTER_ANSWER_MS = 2000;   // happy face once an answer 
 constexpr uint32_t SURPRISE_FIRST_MS = 60000;      // idle: show a random library face not used by a mood...
 constexpr uint32_t SURPRISE_MIN_MS = 120000, SURPRISE_MAX_MS = 240000;   // ...every 2-4 minutes
 constexpr uint32_t SURPRISE_SHOW_MS = 3000;        // ...for 3 seconds
+constexpr size_t PCM_BUFFER_BYTES = 65536;       // answer audio buffer: ~1.5 s at 22 kHz
+constexpr uint32_t PREBUFFER_MS = 1000;          // speak once this much is buffered
+constexpr uint32_t STATUS_EVERY_MS = 60000;      // Wi-Fi signal report to the server while idle
 constexpr int MIC_SHIFT = 14;                 // INMP441 24-bit -> 16-bit; lower = louder (13 = x2)
 
 // Same setup hotspot as the bring-up sketch (Sparky_Wifi_Setup.ino).

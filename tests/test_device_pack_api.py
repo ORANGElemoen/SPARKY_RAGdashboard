@@ -65,3 +65,14 @@ def test_commands_204_then_face(monkeypatch):
     device_commands.board.post(7, {"type": "show_face", "rows": face, "seconds": 10})
     r = c.get("/api/v1/device/commands?wait=0")
     assert r.status_code == 200 and r.json()["rows"] == face
+
+
+def test_status_report_is_kept_alongside_sync():
+    c = _client(SPARKY)
+    r = c.post("/api/v1/device/status", json={"rssi": -67, "answer_audio_s": 25.4, "answer_stalls": 2,
+                                               "answer_stall_ms": 900})
+    assert r.status_code == 200
+    c.post("/api/v1/device/pack/ack", json={"pack_version": "abcd1234abcd1234", "free_bytes": 1})
+    rec = studio.device_sync()["7"]
+    assert rec["rssi"] == -67 and rec["answer_stalls"] == 2 and rec["pack_version"] == "abcd1234abcd1234"
+    assert c.post("/api/v1/device/status", json={"rssi": 5}).status_code == 422   # not a real signal level

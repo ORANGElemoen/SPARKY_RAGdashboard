@@ -55,8 +55,28 @@ static void pollCommands() {
   }
 }
 
+void networkReportStatus(float answerSeconds, int stalls, uint32_t stallMs) {
+  if (!WiFi.isConnected()) return;
+  JsonDocument doc;
+  doc["rssi"] = WiFi.RSSI();
+  if (stalls >= 0) {
+    doc["answer_audio_s"] = answerSeconds;
+    doc["answer_stalls"] = stalls;
+    doc["answer_stall_ms"] = stallMs;
+  }
+  String body;
+  serializeJson(doc, body);
+  HTTPClient http;
+  http.begin(settingsServerUrl() + "/api/v1/device/status");
+  http.addHeader("X-Device-Key", settingsDeviceKey());
+  http.addHeader("Content-Type", "application/json");
+  http.setTimeout(5000);
+  http.POST(body);
+  http.end();
+}
+
 static void networkTask(void*) {
-  uint32_t lastSync = 0;
+  uint32_t lastSync = 0, lastStatus = 0;
   bool firstSync = true;
   for (;;) {
     if (WiFi.isConnected() && sparkyIdle) {
@@ -64,6 +84,10 @@ static void networkTask(void*) {
         if (packSync()) packChanged = true;
         lastSync = millis();
         firstSync = false;
+      }
+      if (!lastStatus || millis() - lastStatus > STATUS_EVERY_MS) {
+        networkReportStatus();
+        lastStatus = millis();
       }
       pollCommands();
     } else {

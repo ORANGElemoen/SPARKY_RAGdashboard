@@ -8,12 +8,14 @@
 #include "config.h"
 #include "faces.h"
 #include "mic.h"
+#include "network_task.h"
 #include "settings.h"
 #include "voice.h"
 #include <ArduinoJson.h>
 #include <HTTPClient.h>
 #include <LittleFS.h>
 #include <WiFi.h>
+#include <freertos/stream_buffer.h>
 
 #define BOUNDARY "SparkyQuestionBoundary"
 static const char* BODY_PATH = "/q.bin";
@@ -60,12 +62,64 @@ static void wavHeader(uint8_t h[44], uint32_t samples) {
   memcpy(h + 36, "data", 4); le32(40, dataBytes);
 }
 
-// Receives the answer body (HTTPClient has already removed the chunked encoding) and plays it:
+// ---------------------------------------------------------------- buffered answer playback
+// The network side (AnswerSink) pours answer audio into a RAM buffer and a player task feeds
+// the speaker from it. Playback starts once ~1 s is buffered (or the whole sentence is in), and
+// if the buffer ever runs dry mid-sentence it refills to ~1 s before carrying on - a weak Wi-Fi
+// moment becomes one short pause instead of choppy speech. Each such pause counts as a stall.
+static StreamBufferHandle_t pcm = nullptr;
+static size_t pcmCapacity = 0;
+static volatile bool receiving = false, answerDone = false, playerDone = true;
+static volatile uint32_t playRate = 22050, stalls = 0, stallMs = 0, playedBytes = 0;
+
+static void playerTask(void*) {
+  int16_t raw[512];
+  uint8_t* buf = (uint8_t*)raw;
+  size_t keep = 0;                               // an odd byte carried over to the next read
+  bool started = false, waiting = true;
+  uint32_t stallStart = 0;
+  for (;;) {
+    size_t avail = xStreamBufferBytesAvailable(pcm);
+    if (waiting) {                               // (re)fill before speaking
+      size_t target = min((size_t)(playRate * 2 * PREBUFFER_MS / 1000), pcmCapacity - 1024);
+      if (avail >= target || (!receiving && avail > 0)) {
+        waiting = false;
+        if (stallStart) { stallMs += millis() - stallStart; stallStart = 0; }
+      } else if (answerDone && avail == 0) {
+        break;
+      } else {
+        vTaskDelay(pdMS_TO_TICKS(5));
+        continue;
+      }
+    }
+    size_t n = xStreamBufferReceive(pcm, buf + keep, sizeof(raw) - keep, pdMS_TO_TICKS(20));
+    if (n == 0) {
+      if (answerDone) break;
+      waiting = true;                            // ran dry
+      if (receiving) { stalls = stalls + 1; stallStart = millis(); }   // ...in the middle of a sentence
+      continue;
+    }
+    if (!started) {
+      facesShowMood(MOOD_TALKING);
+      voiceStreamBegin(playRate);
+      started = true;
+    }
+    n += keep;
+    keep = n & 1;
+    voiceStreamWrite(raw, n / 2);
+    if (keep) buf[0] = buf[n - 1];
+    playedBytes += n - keep;
+  }
+  if (started) voiceStreamEnd();
+  playerDone = true;
+  vTaskDelete(nullptr);
+}
+
+// Receives the answer body (HTTPClient has already removed the chunked encoding):
 // [u32 BE length][metadata JSON] then frame_count x [u32 BE length][one WAV file].
 class AnswerSink : public Stream {
  public:
-  int framesPlayed = 0;
-  bool streaming = false;
+  int framesReceived = 0;
 
   int available() override { return 0; }
   int read() override { return -1; }
@@ -86,9 +140,7 @@ class AnswerSink : public Stream {
   uint8_t lenBuf[4], hdr[44];
   uint32_t need = 0, have = 0;
   char* meta = nullptr;
-  bool gotMeta = false, hasOdd = false;
-  uint32_t frameStart = 0, frameRate = 16000;
-  uint8_t odd = 0;
+  bool gotMeta = false, firstFrame = true;
 
   size_t take(uint8_t* dst, const uint8_t* p, size_t n) {
     size_t k = min((size_t)(need - have), n);
@@ -143,45 +195,25 @@ class AnswerSink : public Stream {
         size_t k = take(hdr, p, n);
         need = frameLen;                         // keep the frame length for the PCM part
         if (have == 44) {
-          uint32_t rate = hdr[24] | hdr[25] << 8 | hdr[26] << 16 | (uint32_t)hdr[27] << 24;
-          if (!streaming) {
+          if (firstFrame) {
             waitFiller();                        // the "let me think" line finishes first
-            facesShowMood(MOOD_TALKING);
-            streaming = true;
+            playRate = hdr[24] | hdr[25] << 8 | hdr[26] << 16 | (uint32_t)hdr[27] << 24;
+            firstFrame = false;
           }
-          voiceStreamBegin(rate);
-          frameStart = millis();
-          frameRate = rate;
+          receiving = true;
           need = frameLen - 44;                  // PCM bytes in this frame
           have = 0;
-          hasOdd = false;
           state = PCM;
         }
         return k;
       }
       case PCM: {
         size_t k = min((size_t)(need - have), n);
-        const uint8_t* q = p;
-        size_t m = k;
-        int16_t buf[256];
-        size_t cnt = 0;
-        if (hasOdd && m) {                       // a sample split across two network reads
-          buf[cnt++] = (int16_t)(odd | q[0] << 8);
-          q++, m--, hasOdd = false;
-        }
-        while (m >= 2) {
-          buf[cnt++] = (int16_t)(q[0] | q[1] << 8);
-          q += 2, m -= 2;
-          if (cnt == 256) { voiceStreamWrite(buf, cnt); cnt = 0; }
-        }
-        if (cnt) voiceStreamWrite(buf, cnt);
-        if (m) { odd = q[0]; hasOdd = true; }
+        xStreamBufferSend(pcm, p, k, portMAX_DELAY);   // blocks while the buffer is full
         have += k;
         if (have == need) {
-          framesPlayed++;
-          // audio length vs. time it took: took > audio means the speaker ran dry (stutter)
-          Serial.printf("[ask] sentence %d: %.1f s of audio took %.1f s\n", framesPlayed,
-                        need / 2.0f / frameRate, (millis() - frameStart) / 1000.0f);
+          receiving = false;
+          framesReceived++;
           state = LEN;
           have = 0;
         }
@@ -196,6 +228,16 @@ class AnswerSink : public Stream {
     return n;
   }
 };
+
+static bool ensureBuffer() {
+  if (pcm) return true;
+  for (size_t size : {(size_t)PCM_BUFFER_BYTES, (size_t)PCM_BUFFER_BYTES / 2}) {   // smaller if RAM is short
+    pcm = xStreamBufferCreate(size, 1);
+    if (pcm) { pcmCapacity = size; Serial.printf("[ask] answer buffer %u KB\n", (unsigned)(size / 1024)); return true; }
+  }
+  Serial.println("[ask] no RAM for the answer buffer");
+  return false;
+}
 
 AskResult askQuestion(bool (*buttonHeld)()) {
   if (!WiFi.isConnected()) {
@@ -233,12 +275,13 @@ AskResult askQuestion(bool (*buttonHeld)()) {
   f.write(wav, 44);
   f.close();
   Serial.printf("[ask] recorded %.1f s\n", samples / 16000.0f);
+  if (!ensureBuffer()) { LittleFS.remove(BODY_PATH); return ASK_SERVER_ERROR; }
 
   // 2. "Hmm, let me think!" plays while the question uploads and the server answers
   fillerDone = false;
   xTaskCreate(fillerTask, "filler", 8192, nullptr, 1, nullptr);
 
-  // 3. ask, and play the answer as it streams in
+  // 3. ask; the answer streams into the buffer and the player speaks it
   AskResult result = ASK_SERVER_ERROR;
   HTTPClient http;
   http.begin(settingsServerUrl() + "/api/v1/voice/query");
@@ -251,11 +294,24 @@ AskResult askQuestion(bool (*buttonHeld)()) {
   int code = http.sendRequest("POST", &body, body.size());
   body.close();
   if (code == 200) {
+    xStreamBufferReset(pcm);
+    receiving = false;
+    answerDone = false;
+    playerDone = false;
+    stalls = 0;
+    stallMs = 0;
+    playedBytes = 0;
+    xTaskCreatePinnedToCore(playerTask, "player", 4096, nullptr, 3, nullptr, 1);
     AnswerSink sink;
     http.writeToStream(&sink);
-    if (sink.streaming) voiceStreamEnd();
-    if (sink.framesPlayed > 0) result = ASK_OK;
-    Serial.printf("[ask] played %d sentences\n", sink.framesPlayed);
+    receiving = false;
+    answerDone = true;
+    while (!playerDone) delay(10);
+    if (sink.framesReceived > 0) result = ASK_OK;
+    float speech = playedBytes / 2.0f / playRate;
+    Serial.printf("[ask] played %d sentences, %.1f s of speech, %u stalls (%u ms), Wi-Fi %d dBm\n",
+                  sink.framesReceived, speech, (unsigned)stalls, (unsigned)stallMs, WiFi.RSSI());
+    networkReportStatus(speech, stalls, stallMs);
   } else {
     Serial.printf("[ask] server said %d: %s\n", code, code > 0 ? http.getString().c_str() : http.errorToString(code).c_str());
   }
