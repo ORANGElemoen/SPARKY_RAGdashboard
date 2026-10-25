@@ -142,7 +142,9 @@ python -m piper.download_voices en_US-hfc_female-medium --download-dir data/pipe
 
 The speech-to-text model (`faster-whisper`, size configurable via the
 `WHISPER_MODEL_SIZE` env var, default `base`) downloads automatically on
-first use. The TTS voice is configurable via the `PIPER_VOICE` env var.
+first use. The TTS voice is Sparky's own (`en_US-sparky-medium`) when that model is in
+`data/piper_voices/`, otherwise `en_US-hfc_female-medium`; set the `PIPER_VOICE` env var to
+choose another.
 
 Both models are loaded once per server process and kept in memory — the
 first voice request after a restart will be slower than subsequent ones

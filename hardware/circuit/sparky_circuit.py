@@ -135,7 +135,9 @@ matrix[4] += net_matrix_cs  # SPI Chip Select
 matrix[5] += net_matrix_clk # SPI Clock
 
 # -----------------------------------------------------------------------------
-# 5. Accent White LED (Low-side switched via GPIO 4)
+# 5. Accent White LED (Low-side switched via GPIO 4, from the 3.3V rail)
+# v3: moved from 5V to 3V3 so GPIO 4 never sees more than 3.3V (the report's
+# identified risk). 47R: (3.3V - ~2.9V Vf - 0.1V pin drop) / 47R = ~6 mA.
 # -----------------------------------------------------------------------------
 led = Part(
     'Device',
@@ -147,13 +149,13 @@ led = Part(
 r_led = Part(
     'Device',
     'R',
-    value='220',
+    value='47',
     footprint='Resistor_THT:R_Axial_DIN0207_L6.3mm_D2.5mm_P7.62mm_Horizontal',
     ref='R1'
 )
 
-# 5V Rail -> Resistor -> LED Anode -> LED Cathode -> GPIO 4
-vcc_5v += r_led[1]
+# 3V3 Rail -> Resistor -> LED Anode -> LED Cathode -> GPIO 4 (LOW = on)
+vcc_3v3 += r_led[1]
 r_led[2] += led['A']       # Anode (+)
 led['K'] += net_led_cathode # Cathode (-) low-side switched
 
@@ -185,5 +187,5 @@ touch_pad[1] += net_touch_pad
 # -----------------------------------------------------------------------------
 if __name__ == '__main__':
     ERC()
-    generate_netlist(filename='sparky_build.net')
-    print("Successfully generated 'sparky_build.net'!")
+    generate_netlist(filename='sparky_circuit.net')
+    print("Successfully generated 'sparky_circuit.net'!")

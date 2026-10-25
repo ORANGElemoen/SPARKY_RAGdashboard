@@ -35,6 +35,11 @@ except ImportError:
     logger.warning("Official Ollama client not available, using requests fallback")
 
 
+# Keep the model in memory between questions. Ollama's default (5 min) unloads it, and the
+# next question then waits ~60 s for the reload - longer than Sparky waits for an answer.
+KEEP_ALIVE = "24h"
+
+
 class OllamaClient:
     """Client for communicating with Ollama API"""
 
@@ -191,6 +196,8 @@ class OllamaClient:
                     prompt="Hello",
                     options={"num_predict": 1, "temperature": 0.1},
                     stream=False,
+                    think=False,  # Qwen 3.x would spend the one token on hidden thinking
+                    keep_alive=KEEP_ALIVE,
                 )
                 preload_success = bool(response.get("response", "").strip())
             else:
@@ -199,6 +206,8 @@ class OllamaClient:
                     "prompt": "Hello",
                     "options": {"num_predict": 1, "temperature": 0.1},
                     "stream": False,
+                    "think": False,
+                    "keep_alive": KEEP_ALIVE,
                 }
 
                 import requests
@@ -206,7 +215,7 @@ class OllamaClient:
                 response = requests.post(
                     f"{self.base_url}/api/generate",
                     json=payload,
-                    timeout=60,  # Shorter timeout for preloading
+                    timeout=self.timeout,  # a cold model load can take over a minute
                 )
                 preload_success = response.status_code == 200 and bool(
                     response.json().get("response", "").strip()
@@ -465,6 +474,7 @@ class OllamaClient:
                     },
                     stream=False,
                     think=False,  # spoken answers: no hidden reasoning (Qwen 3.x thinks by default)
+                    keep_alive=KEEP_ALIVE,
                 )
 
                 answer = response.get("response", "").strip()
@@ -522,6 +532,7 @@ class OllamaClient:
                     # Spoken answers: no hidden reasoning. Thinking models (Qwen 3.x)
                     # otherwise spend the whole token budget thinking and return "".
                     "think": False,
+                    "keep_alive": KEEP_ALIVE,
                 }
 
                 response = requests.post(

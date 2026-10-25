@@ -2,7 +2,7 @@
   (version "D")
   (design
     (source "sparky_circuit.py")
-    (date "09/21/2026 03:35 AM")
+    (date "10/20/2026 12:01 PM")
     (tool "SKiDL (2.3.0)")
     (sheet
       (number 1)
@@ -55,17 +55,17 @@
         (field
           (name "Datasheet"))
         (field
-          (name "SKiDL Tag") "4iZmUWGKnb")
+          (name "SKiDL Tag") "ln9Pif59q8")
         (field
-          (name "SKiDL Line") "sparky_circuit.py:140"))
+          (name "SKiDL Line") "sparky_circuit.py:142"))
       (libsource
-        (lib "Device")
+        (lib "NO_LIB")
         (part "LED"))
       (sheetpath
         (names "/")
         (tstamps "/"))
       (component_classes)
-      (tstamps "a1bd8dd2-12b7-5a0e-aba3-a899f68df313"))
+      (tstamps "dea9aff6-67d9-5fad-867a-b8d5bc3aadde"))
     (comp
       (ref "J_AMP")
       (value "Conn_01x09")
@@ -79,17 +79,17 @@
         (field
           (name "Datasheet"))
         (field
-          (name "SKiDL Tag") "0z6w6ula3I")
+          (name "SKiDL Tag") "XKzs4bTd_2")
         (field
           (name "SKiDL Line") "sparky_circuit.py:95"))
       (libsource
-        (lib "Connector_Generic")
+        (lib "NO_LIB")
         (part "Conn_01x09"))
       (sheetpath
         (names "/")
         (tstamps "/"))
       (component_classes)
-      (tstamps "b70fbac0-6a6d-5fa7-9ecd-28d5396e198b"))
+      (tstamps "3bd1e852-cd16-57a3-87b9-62a1ec26eb68"))
     (comp
       (ref "J_MATRIX")
       (value "Conn_01x05")
@@ -103,17 +103,17 @@
         (field
           (name "Datasheet"))
         (field
-          (name "SKiDL Tag") "OODVobjdhJ")
+          (name "SKiDL Tag") "ZfYkXZ9Fv1")
         (field
           (name "SKiDL Line") "sparky_circuit.py:124"))
       (libsource
-        (lib "Connector_Generic")
+        (lib "NO_LIB")
         (part "Conn_01x05"))
       (sheetpath
         (names "/")
         (tstamps "/"))
       (component_classes)
-      (tstamps "e059e1a2-f108-5adb-a686-8496f38bf772"))
+      (tstamps "1d1554e0-1650-5ede-9803-735b65bced69"))
     (comp
       (ref "J_MIC")
       (value "Conn_01x06")
@@ -127,17 +127,17 @@
         (field
           (name "Datasheet"))
         (field
-          (name "SKiDL Tag") "5rebcuGTql")
+          (name "SKiDL Tag") "DXmakGAjO7")
         (field
           (name "SKiDL Line") "sparky_circuit.py:73"))
       (libsource
-        (lib "Connector_Generic")
+        (lib "NO_LIB")
         (part "Conn_01x06"))
       (sheetpath
         (names "/")
         (tstamps "/"))
       (component_classes)
-      (tstamps "17e8604b-2bb9-5fd9-ac9c-ba158934d815"))
+      (tstamps "a52c7dbd-bb28-53e4-bb84-a41788bfbc8d"))
     (comp
       (ref "J_SPK")
       (value "Conn_01x02")
@@ -151,17 +151,17 @@
         (field
           (name "Datasheet"))
         (field
-          (name "SKiDL Tag") "Zol7YU5eha")
+          (name "SKiDL Tag") "C1ecgyoyIa")
         (field
           (name "SKiDL Line") "sparky_circuit.py:111"))
       (libsource
-        (lib "Connector_Generic")
+        (lib "NO_LIB")
         (part "Conn_01x02"))
       (sheetpath
         (names "/")
         (tstamps "/"))
       (component_classes)
-      (tstamps "5bccfc40-4422-5d5c-9572-a8de2cd298eb"))
+      (tstamps "b3d395b0-b4af-5cc8-83ce-ed0efb575912"))
     (comp
       (ref "J_TOUCH")
       (value "Conn_01x01")
@@ -175,20 +175,20 @@
         (field
           (name "Datasheet"))
         (field
-          (name "SKiDL Tag") "lNgbFwOalD")
+          (name "SKiDL Tag") "Cn95YBLfdC")
         (field
-          (name "SKiDL Line") "sparky_circuit.py:175"))
+          (name "SKiDL Line") "sparky_circuit.py:177"))
       (libsource
-        (lib "Connector_Generic")
+        (lib "NO_LIB")
         (part "Conn_01x01"))
       (sheetpath
         (names "/")
         (tstamps "/"))
       (component_classes)
-      (tstamps "03e86b1b-3fe5-5871-86bc-efc145ba550b"))
+      (tstamps "233683c8-09d0-5259-826b-c38ab9f955db"))
     (comp
       (ref "R1")
-      (value "220")
+      (value "47")
       (description "Resistor")
       (footprint "Resistor_THT:R_Axial_DIN0207_L6.3mm_D2.5mm_P7.62mm_Horizontal")
       (fields
@@ -199,17 +199,17 @@
         (field
           (name "Datasheet"))
         (field
-          (name "SKiDL Tag") "ycc2IVgYiZ")
+          (name "SKiDL Tag") "lhNdzD0MH8")
         (field
-          (name "SKiDL Line") "sparky_circuit.py:147"))
+          (name "SKiDL Line") "sparky_circuit.py:149"))
       (libsource
-        (lib "Device")
+        (lib "NO_LIB")
         (part "R"))
       (sheetpath
         (names "/")
         (tstamps "/"))
       (component_classes)
-      (tstamps "44e7a38b-2900-5c73-834a-8f8eebbd63c1"))
+      (tstamps "f1fe5beb-e44e-59e4-b548-e732e1fefe36"))
     (comp
       (ref "SW1")
       (value "SW_Push")
@@ -223,17 +223,17 @@
         (field
           (name "Datasheet"))
         (field
-          (name "SKiDL Tag") "GpnsTpZkav")
+          (name "SKiDL Tag") "IjLs2ll_7W")
         (field
-          (name "SKiDL Line") "sparky_circuit.py:163"))
+          (name "SKiDL Line") "sparky_circuit.py:165"))
       (libsource
-        (lib "Switch")
+        (lib "NO_LIB")
         (part "SW_Push"))
       (sheetpath
         (names "/")
         (tstamps "/"))
       (component_classes)
-      (tstamps "60e0cc12-b518-5583-860a-f82d6f7be536"))
+      (tstamps "000ab519-32d4-54f5-9788-5d1ad04443f9"))
     (comp
       (ref "U1")
       (value "Conn_01x16")
@@ -247,17 +247,17 @@
         (field
           (name "Datasheet"))
         (field
-          (name "SKiDL Tag") "IAk54dG9a5")
+          (name "SKiDL Tag") "RHflpLIqi9")
         (field
           (name "SKiDL Line") "sparky_circuit.py:22"))
       (libsource
-        (lib "Connector_Generic")
+        (lib "NO_LIB")
         (part "Conn_01x16"))
       (sheetpath
         (names "/")
         (tstamps "/"))
       (component_classes)
-      (tstamps "7b0e5ffc-9ffa-522e-af5a-af845fc78dd8")))
+      (tstamps "a10ac6b7-d4c8-58ae-ad38-c6f77840790f")))
   (nets
     (net
       (code 1)
@@ -265,6 +265,10 @@
       (class "Default")
       (node
         (ref "J_MIC")
+        (pin "1")
+        (pintype "PASSIVE"))
+      (node
+        (ref "R1")
         (pin "1")
         (pintype "PASSIVE"))
       (node
@@ -281,10 +285,6 @@
         (pintype "PASSIVE"))
       (node
         (ref "J_MATRIX")
-        (pin "1")
-        (pintype "PASSIVE"))
-      (node
-        (ref "R1")
         (pin "1")
         (pintype "PASSIVE"))
       (node

@@ -12,6 +12,7 @@ mapping into a C header the ESP32 sketch includes; voice lines export as
 16 kHz mono WAVs sized for the ESP32's flash.
 """
 
+import hashlib
 import io
 import json
 import re
@@ -25,18 +26,23 @@ from typing import Dict, List, Optional
 STUDIO_DIR = Path("data/studio")
 VOICE_DIR = STUDIO_DIR / "voice"
 STORE = STUDIO_DIR / "studio.json"
+SYNC_STORE = STUDIO_DIR / "device_sync.json"   # which pack each device reported having
 FACES_FORMAT = "sparky-faces/1"
 
 # Face states from the design report (REQ-F-09), in firmware enum order.
-MOODS = ["idle", "listening", "thinking", "talking", "happy", "error"]
+MOODS = ["idle", "listening", "thinking", "talking", "happy", "error", "startup",
+         "wifi_connected", "wifi_setup", "wifi_error"]
 # When each voice line is meant to play on the device.
 TRIGGERS = {
     "button_release": "When the button is let go (covers the wait for the answer)",
     "startup": "When Sparky switches on",
+    "wifi_connected": "Right after Sparky joins the Wi-Fi",
+    "wifi_setup": "No Wi-Fi found: Sparky opened its setup hotspot",
     "wifi_error": "When Sparky can't reach the Wi-Fi",
     "server_error": "When the tutor server doesn't answer",
     "goodbye": "Before going to sleep",
     "custom": "Your own use",
+    "test_question": "Bench test: sent as the question instead of the mic (firmware test mode)",
 }
 DEVICE_SAMPLE_RATE = 16000          # Hz, mono 16-bit: small enough for flash, clear enough for speech
 FLASH_BUDGET_BYTES = 1_000_000      # rough space for voice lines on a 4 MB ESP32 (estimate)
@@ -72,10 +78,42 @@ DEFAULT_FACES: Dict[str, List[str]] = {
     "Sleepy / idle": _face("lid", "lid", 4, 20, 4, 4),
     "Thinking (eyes up)": _face("look", "look", 8, 24, 0, 0),
     "Error  X X": _face("cross", "cross", 4, 20, 0, 0),
+    # Wi-Fi status at startup: the symbol plus a tick, a question mark or a cross
+    "Wi-Fi connected": [
+        ".....#####..................#...",
+        "...##.....##...............##...",
+        "..#.........#.............##....",
+        ".....#####........#......##.....",
+        "....#.....#.......##....##......",
+        "......###..........##..##.......",
+        "....................####........",
+        ".......#.............##.........",
+    ],
+    "Looking for Wi-Fi": [
+        ".......#####..........####......",
+        ".....##.....##.......##..##.....",
+        "....#.........#..........##.....",
+        ".......#####............##......",
+        "......#.....#..........##.......",
+        "........###............##.......",
+        "................................",
+        ".........#.............##.......",
+    ],
+    "No Wi-Fi": [
+        ".......#####........##....##....",
+        ".....##.....##.......##..##.....",
+        "....#.........#.......####......",
+        ".......#####...........##.......",
+        "......#.....#.........####......",
+        "........###..........##..##.....",
+        "....................##....##....",
+        ".........#......................",
+    ],
 }
 DEFAULT_MOODS = {
     "idle": "Sleepy / idle", "listening": "Neutral (listening)", "thinking": "Thinking (eyes up)",
-    "talking": "Happy  ^ ^", "happy": "Happy  ^ ^", "error": "Error  X X",
+    "talking": "Happy  ^ ^", "happy": "Happy  ^ ^", "error": "Error  X X", "startup": "Happy  ^ ^",
+    "wifi_connected": "Wi-Fi connected", "wifi_setup": "Looking for Wi-Fi", "wifi_error": "No Wi-Fi",
 }
 
 _ROW = re.compile(r"^[#.]{32}$")
@@ -253,8 +291,15 @@ def export_header(data: Optional[Dict] = None) -> str:
 
 # ---------------------------------------------------------------- voice lines
 def to_device_wav(wav_bytes: bytes) -> bytes:
-    """Any mono/stereo 16-bit WAV -> 16 kHz mono 16-bit WAV (linear resample)."""
+    """Any mono/stereo 16-bit WAV -> 16 kHz mono 16-bit WAV.
+
+    resample_poly low-pass filters while resampling; plain interpolation folded the
+    voice's 8-11 kHz content back down as a harsh fizz on s/t sounds.
+    """
+    from math import gcd
+
     import numpy as np
+    from scipy.signal import resample_poly  # scipy comes with scikit-learn (core requirement)
 
     with wave.open(io.BytesIO(wav_bytes)) as w:
         rate, channels, width = w.getframerate(), w.getnchannels(), w.getsampwidth()
@@ -265,8 +310,8 @@ def to_device_wav(wav_bytes: bytes) -> bytes:
     if channels > 1:
         audio = audio.reshape(-1, channels).mean(axis=1)
     if rate != DEVICE_SAMPLE_RATE and len(audio):
-        n_out = int(round(len(audio) * DEVICE_SAMPLE_RATE / rate))
-        audio = np.interp(np.linspace(0, len(audio) - 1, n_out), np.arange(len(audio)), audio)
+        g = gcd(DEVICE_SAMPLE_RATE, rate)
+        audio = resample_poly(audio, DEVICE_SAMPLE_RATE // g, rate // g)
     out = io.BytesIO()
     with wave.open(out, "wb") as w:
         w.setnchannels(1)
@@ -349,3 +394,46 @@ def summary(data: Optional[Dict] = None) -> Dict:
         "flash": {"used_bytes": used, "budget_bytes": FLASH_BUDGET_BYTES},
         "default_faces": list(DEFAULT_FACES),
     }
+
+
+# ---------------------------------------------------------------- Wi-Fi personality pack
+def build_pack(data: Optional[Dict] = None) -> Dict:
+    """What a Sparky downloads over Wi-Fi: faces, mood mapping and voice-line list.
+
+    pack_version is a fingerprint of the content, so a device can ask
+    "is pack X still current?" and get a tiny "yes" (HTTP 304). Voice-line
+    ids never change content, so the device only fetches ids it lacks.
+    """
+    data = data or load()
+    lines = [{"id": v["id"], "trigger": v["trigger"], "mood": v["mood"], "bytes": v["bytes"]}
+             for v in data["voice_lines"] if (VOICE_DIR / f"{v['id']}.wav").exists()]
+    body = {"faces": data["faces"], "moods": {m: data["moods"][m] for m in MOODS}, "voice_lines": lines}
+    canonical = json.dumps(body, sort_keys=True, separators=(",", ":"), ensure_ascii=False)
+    version = hashlib.sha256(canonical.encode("utf-8")).hexdigest()[:16]
+    return {"pack_version": version, "protocol_version": 1, "sample_rate": DEVICE_SAMPLE_RATE,
+            "mood_order": MOODS, **body}
+
+
+def device_sync() -> Dict[str, Dict]:
+    if SYNC_STORE.exists():
+        return json.loads(SYNC_STORE.read_text(encoding="utf-8"))
+    return {}
+
+
+def record_device_sync(device_id: int, pack_version: str, free_bytes: int, error: Optional[str] = None) -> None:
+    _update_device(device_id, {"pack_version": pack_version, "free_bytes": int(free_bytes), "error": error,
+                               "at": datetime.now(timezone.utc).isoformat(timespec="seconds")})
+
+
+def record_device_status(device_id: int, status: Dict) -> None:
+    """What a Sparky reports about itself: Wi-Fi signal, and how smoothly its last answer played."""
+    _update_device(device_id, {**status, "status_at": datetime.now(timezone.utc).isoformat(timespec="seconds")})
+
+
+def _update_device(device_id: int, fields: Dict) -> None:
+    sync = device_sync()
+    sync.setdefault(str(device_id), {}).update(fields)
+    STUDIO_DIR.mkdir(parents=True, exist_ok=True)
+    tmp = SYNC_STORE.with_suffix(".tmp")
+    tmp.write_text(json.dumps(sync, indent=1), encoding="utf-8")
+    tmp.replace(SYNC_STORE)

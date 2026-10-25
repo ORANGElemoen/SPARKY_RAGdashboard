@@ -18,6 +18,7 @@ def tmp_studio(tmp_path, monkeypatch):
     monkeypatch.setattr(studio, "STUDIO_DIR", tmp_path)
     monkeypatch.setattr(studio, "VOICE_DIR", tmp_path / "voice")
     monkeypatch.setattr(studio, "STORE", tmp_path / "studio.json")
+    monkeypatch.setattr(studio, "SYNC_STORE", tmp_path / "device_sync.json")
 
 
 def test_default_faces_are_32_by_8():

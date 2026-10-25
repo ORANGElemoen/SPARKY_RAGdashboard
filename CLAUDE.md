@@ -62,6 +62,7 @@ open-source-rag-system/
 │   ├── simple_requirements.txt    # Core deps
 │   └── voice_requirements.txt     # Optional: faster-whisper, piper-tts
 ├── docs/                          # API docs, PROJECT_HANDOFF/PROTOCOL, Sparky hardware PDFs, images/
+├── firmware/sparky/               # ESP32 Arduino sketch: Wi-Fi setup, Studio pack sync, faces, voice lines
 ├── hardware/
 │   ├── circuit/                   # SKiDL script + generated KiCad netlist/ERC files
 │   └── cad/                       # Enclosure STL/3MF/SVG exports + inspection scripts

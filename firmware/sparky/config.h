@@ -1,0 +1,58 @@
+// Pins from the report's ESP32 pin map, and timings.
+#pragma once
+#include <Arduino.h>
+
+// Bench settings that stay on this PC (gitignored): SPARKY_SERVER, SPARKY_DEVICE_KEY (so the
+// setup page only needs the Wi-Fi) and SPARKY_TEST_QUESTION 1 (send the Studio "test_question"
+// voice line instead of recording the mic).
+#if __has_include("local_config.h")
+#include "local_config.h"
+#endif
+#ifndef SPARKY_SERVER
+#define SPARKY_SERVER ""
+#endif
+#ifndef SPARKY_DEVICE_KEY
+#define SPARKY_DEVICE_KEY ""
+#endif
+#ifndef SPARKY_TEST_QUESTION
+#define SPARKY_TEST_QUESTION 0
+#endif
+
+constexpr int PIN_AMP_BCLK = 27, PIN_AMP_LRC = 26, PIN_AMP_DIN = 22, PIN_AMP_SD = 21;
+constexpr int PIN_MATRIX_CS = 5;              // CLK 18 / DIN 23 are the default VSPI pins
+constexpr int PIN_BUTTON = 14;
+constexpr int PIN_LED = 4;                    // accent LED, wired 3V3 -> 47R -> LED -> GPIO 4 (LOW = on)
+constexpr int PIN_MIC_SCK = 32, PIN_MIC_WS = 25, PIN_MIC_SD = 33;   // INMP441, L/R pin to GND
+constexpr int MATRIX_DEVICES = 4;             // 4 x 8x8 = 32 x 8
+constexpr int MATRIX_BRIGHTNESS = 0;          // 0 (dimmest) - 15; low also keeps USB current down
+constexpr uint32_t SYNC_EVERY_MS = 5UL * 60UL * 1000UL;
+constexpr int LONG_POLL_SECONDS = 25;
+constexpr size_t FLASH_MARGIN_BYTES = 32 * 1024;   // never fill LittleFS completely
+
+// Voice question (push to talk): hold the button, speak, let go.
+constexpr uint32_t MAX_QUESTION_MS = 8000;    // 8 s at 16 kHz = 256 KB in LittleFS
+constexpr uint32_t MIN_QUESTION_MS = 300;     // shorter presses are taps, not questions
+constexpr uint16_t ANSWER_TIMEOUT_MS = 65000; // speech-to-text + LLM on a CPU server can be slow (16-bit max)
+constexpr uint32_t HAPPY_AFTER_ANSWER_MS = 2000;   // happy face once an answer is done
+constexpr uint32_t SURPRISE_FIRST_MS = 60000;      // idle: show a random library face not used by a mood...
+constexpr uint32_t SURPRISE_MIN_MS = 120000, SURPRISE_MAX_MS = 240000;   // ...every 2-4 minutes
+constexpr uint32_t SURPRISE_SHOW_MS = 3000;        // ...for 3 seconds
+constexpr size_t PCM_BUFFER_BYTES = 65536;       // answer audio buffer: ~1.5 s at 22 kHz
+constexpr uint32_t PREBUFFER_MS = 1000;          // speak once this much is buffered
+// Wi-Fi transmit power. Full power (19.5 dBm) makes current spikes that sag a weak USB supply
+// below what the 3.3 V regulator needs, and the radio drops data (answers stutter on chargers).
+// 11 dBm is plenty within a classroom; raise it if Sparky is far from the router.
+#define SPARKY_WIFI_TX_POWER WIFI_POWER_11dBm
+constexpr uint32_t STATUS_EVERY_MS = 60000;      // Wi-Fi signal report to the server while idle
+constexpr int MIC_SHIFT = 14;                 // INMP441 24-bit -> 16-bit; lower = louder (13 = x2)
+
+// Same setup hotspot as the bring-up sketch (Sparky_Wifi_Setup.ino).
+constexpr const char* SETUP_AP_NAME = "Sparky Setup";
+constexpr const char* SETUP_AP_PASSWORD = "sparky123";   // WPA2 needs 8+ characters
+
+#ifndef SPARKY_FLIP_X
+#define SPARKY_FLIP_X 1                       // flip if faces show up mirrored
+#endif
+#ifndef SPARKY_FLIP_Y
+#define SPARKY_FLIP_Y 0                       // flip if faces show up upside down
+#endif

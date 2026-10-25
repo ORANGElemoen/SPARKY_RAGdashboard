@@ -90,6 +90,10 @@
                             <button id="mirrorFace" class="btn btn-secondary">Copy left eye to right</button>
                             <button id="deleteFace" class="btn btn-secondary">Delete face</button>
                         </div>
+                        <div class="row">
+                            <select id="previewDevice" class="input" style="max-width:260px" aria-label="Sparky to preview on"></select>
+                            <button id="previewBtn" class="btn btn-secondary">Send to Sparky now</button>
+                        </div>
                         <div class="msg" id="faceMsg"></div>
                     </div>
                 </div>
@@ -131,10 +135,20 @@
                 <div class="meter"><div id="flashBar"></div></div>
             </section>
 
+            <!-- ============ devices ============ -->
+            <section class="studio-section">
+                <h2>4. Your Sparkys</h2>
+                <p class="hint">Sparkys update themselves over Wi-Fi when nobody is talking to them. "Up to date" means a Sparky already has everything on this page.</p>
+                <table>
+                    <thead><tr><th>Sparky</th><th>Status</th><th>Wi-Fi</th><th>Last answer</th><th>Last seen</th><th>Space left</th></tr></thead>
+                    <tbody id="devices"></tbody>
+                </table>
+            </section>
+
             <!-- ============ export ============ -->
             <section class="studio-section">
-                <h2>4. Send it to Sparky</h2>
-                <p class="hint">For now, faces go into the firmware when you upload it to the ESP32. Wi-Fi updates come later.</p>
+                <h2>5. Build it into the firmware (backup)</h2>
+                <p class="hint">Not needed when Sparky is on Wi-Fi - use this only to build faces into the program by hand.</p>
                 <div class="row">
                     <a class="btn btn-primary" href="/admin/studio/export/sparky_faces.h">Download sparky_faces.h</a>
                     <a class="btn btn-secondary" href="/admin/studio/export/voice_lines.zip">Download voice lines (.zip)</a>
@@ -179,6 +193,9 @@ const MOOD_INFO = {
     idle: 'Waiting - nobody is talking to him', listening: 'Button held down - recording the child',
     thinking: 'Waiting for the answer from the tutor', talking: 'Speaking the answer out loud',
     happy: 'Praise, or a correct answer', error: 'Something went wrong (Wi-Fi or server)',
+    startup: 'Switching on (with the startup voice line)',
+    wifi_connected: 'Just joined the Wi-Fi', wifi_setup: 'No Wi-Fi found - the setup hotspot is open',
+    wifi_error: 'Setup timed out, still no Wi-Fi',
 };
 const BLANK = Array(8).fill('.'.repeat(32));
 let S = null, rows = BLANK.slice(), current = null;
@@ -337,7 +354,35 @@ $('makeLine').onclick = async () => {
     finally { $('makeLine').disabled = false; }
 };
 
+async function loadDevices() {
+    let data;
+    try { data = await api('GET', '/admin/studio/devices'); } catch (e) { return; }
+    const active = data.devices.filter(d => !d.revoked);
+    $('previewDevice').replaceChildren(...(active.length ? active.map(d => h('option', {value: d.id}, d.name))
+                                                          : [h('option', {value: ''}, 'No Sparkys registered yet')]));
+    const body = $('devices'); body.replaceChildren();
+    if (!active.length) body.append(h('tr', {}, h('td', {colSpan: 6, class: 'muted'}, 'Register a Sparky on the Devices page first.')));
+    for (const d of active) {
+        const status = d.error ? `Problem: ${d.error}` : !d.pack_version ? 'Never updated yet'
+                     : d.up_to_date ? 'Up to date' : 'Waiting to update';
+        const space = d.free_bytes == null ? '-' : `${Math.round(d.free_bytes / 1024)} KB`;
+        const wifi = d.rssi == null ? '-' : `${d.rssi} dBm (${d.rssi >= -60 ? 'strong' : d.rssi >= -70 ? 'OK' : d.rssi >= -80 ? 'weak' : 'very weak'})`;
+        const answer = d.answer_stalls == null ? '-' : d.answer_stalls === 0 ? 'smooth'
+                     : `${d.answer_stalls} stutter${d.answer_stalls > 1 ? 's' : ''} (${(d.answer_stall_ms / 1000).toFixed(1)} s)`;
+        body.append(h('tr', {}, h('td', {}, d.name), h('td', {}, status), h('td', {}, wifi), h('td', {}, answer),
+                         h('td', {class: 'muted'}, d.last_seen_at || 'never'), h('td', {}, space)));
+    }
+}
+$('previewBtn').onclick = async () => {
+    const id = $('previewDevice').value;
+    if (!id) return say('faceMsg', 'Register a Sparky on the Devices page first.', 'bad');
+    try { await api('POST', `/admin/studio/devices/${id}/preview`, {rows}); say('faceMsg', 'Sent - it should appear on Sparky in a second or two.', 'ok'); }
+    catch (e) { say('faceMsg', e.message, 'bad'); }
+};
+setInterval(loadDevices, 15000);
+
 (async () => {
+    loadDevices();
     try { S = await api('GET', '/admin/studio'); renderAll(); select(Object.keys(S.faces)[0]); }
     catch (e) { say('faceMsg', 'Could not load the studio: ' + e.message, 'bad'); }
 })();

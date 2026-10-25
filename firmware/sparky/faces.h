@@ -1,0 +1,11 @@
+#pragma once
+#include <Arduino.h>
+// Same order as the pack's mood_order (core/services/studio_service.py MOODS).
+enum : uint8_t { MOOD_IDLE, MOOD_LISTENING, MOOD_THINKING, MOOD_TALKING, MOOD_HAPPY, MOOD_ERROR, MOOD_STARTUP,
+                 MOOD_WIFI_CONNECTED, MOOD_WIFI_SETUP, MOOD_WIFI_ERROR, MOOD_COUNT };
+extern const char* const MOOD_NAMES[MOOD_COUNT];
+void facesBegin();
+bool facesLoad();                                   // re-read /pack/manifest.json; false = using built-ins
+void facesShowMood(uint8_t mood);                  // the animator does the rest (blinks, LED, ...)
+void facesSetLevel(uint8_t loudness);              // 0-255, from the speaker: makes the talking face move
+void facesShowRows(const char* const rows[8]);      // 8 strings of 32 '#'/'.'
