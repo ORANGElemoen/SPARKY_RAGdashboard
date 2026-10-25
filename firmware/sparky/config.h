@@ -2,6 +2,22 @@
 #pragma once
 #include <Arduino.h>
 
+// Bench settings that stay on this PC (gitignored): SPARKY_SERVER, SPARKY_DEVICE_KEY (so the
+// setup page only needs the Wi-Fi) and SPARKY_TEST_QUESTION 1 (send the Studio "test_question"
+// voice line instead of recording the mic).
+#if __has_include("local_config.h")
+#include "local_config.h"
+#endif
+#ifndef SPARKY_SERVER
+#define SPARKY_SERVER ""
+#endif
+#ifndef SPARKY_DEVICE_KEY
+#define SPARKY_DEVICE_KEY ""
+#endif
+#ifndef SPARKY_TEST_QUESTION
+#define SPARKY_TEST_QUESTION 0
+#endif
+
 constexpr int PIN_AMP_BCLK = 27, PIN_AMP_LRC = 26, PIN_AMP_DIN = 22, PIN_AMP_SD = 21;
 constexpr int PIN_MATRIX_CS = 5;              // CLK 18 / DIN 23 are the default VSPI pins
 constexpr int PIN_BUTTON = 14;

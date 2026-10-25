@@ -32,7 +32,8 @@ void voiceBegin() {
   i2s_set_pin(I2S_NUM_1, &pins);
 }
 
-bool voicePlay(const char* trigger, uint8_t* moodOut) {
+// A random voice line with this trigger from the pack: its file path and its mood.
+static bool pickLine(const char* trigger, String& path, uint8_t& mood) {
   if (!LittleFS.exists("/pack/manifest.json")) return false;
   File mf = LittleFS.open("/pack/manifest.json", "r");
   JsonDocument doc;
@@ -42,17 +43,29 @@ bool voicePlay(const char* trigger, uint8_t* moodOut) {
 
   JsonObject pick;
   int seen = 0;
-  for (JsonObject v : doc["voice_lines"].as<JsonArray>())          // random pick among matching lines
+  for (JsonObject v : doc["voice_lines"].as<JsonArray>())
     if (strcmp(v["trigger"] | "", trigger) == 0 && random(++seen) == 0) pick = v;
   if (pick.isNull()) return false;
+  mood = MOOD_IDLE;
+  for (uint8_t m = 0; m < MOOD_COUNT; m++) if (strcmp(pick["mood"] | "", MOOD_NAMES[m]) == 0) mood = m;
+  path = "/pack/v/" + pick["id"].as<String>() + ".wav";
+  return LittleFS.exists(path);
+}
 
+String voiceLinePath(const char* trigger) {
+  String path;
+  uint8_t mood;
+  return pickLine(trigger, path, mood) ? path : String();
+}
+
+bool voicePlay(const char* trigger, uint8_t* moodOut) {
+  String path;
+  uint8_t mood;
+  if (!pickLine(trigger, path, mood)) return false;
   if (moodOut) {
-    *moodOut = MOOD_IDLE;
-    for (uint8_t m = 0; m < MOOD_COUNT; m++) if (strcmp(pick["mood"] | "", MOOD_NAMES[m]) == 0) *moodOut = m;
-    facesShowMood(*moodOut);                     // face first, so it shows while Sparky talks
+    *moodOut = mood;
+    facesShowMood(mood);                         // face first, so it shows while Sparky talks
   }
-  String path = "/pack/v/" + pick["id"].as<String>() + ".wav";
-  if (!LittleFS.exists(path)) return false;
   File f = LittleFS.open(path, "r");
   f.seek(44);                                    // skip the 44-byte WAV header (server always writes this layout)
   int16_t mono[256];

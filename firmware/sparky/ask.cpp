@@ -31,6 +31,26 @@ static void waitFiller() {
   while (!fillerDone) delay(10);
 }
 
+#if SPARKY_TEST_QUESTION
+// Bench test without a microphone: the Studio "test_question" voice line (already 16 kHz mono)
+// is sent as the question, once the button is let go.
+static size_t testQuestion(File& out, bool (*buttonHeld)()) {
+  while (buttonHeld()) delay(10);
+  String path = voiceLinePath("test_question");
+  if (path.isEmpty()) {
+    Serial.println("[ask] test mode: make a voice line with the 'test_question' trigger in Sparky Studio");
+    return 0;
+  }
+  File in = LittleFS.open(path, "r");
+  in.seek(44);
+  uint8_t buf[512];
+  size_t n, bytes = 0;
+  while ((n = in.read(buf, sizeof(buf))) > 0) bytes += out.write(buf, n);
+  in.close();
+  return bytes / 2;
+}
+#endif
+
 static void wavHeader(uint8_t h[44], uint32_t samples) {
   const uint32_t rate = 16000, dataBytes = samples * 2;
   auto le32 = [&](int at, uint32_t v) { for (int i = 0; i < 4; i++) h[at + i] = v >> (8 * i); };
@@ -188,7 +208,11 @@ AskResult askQuestion(bool (*buttonHeld)()) {
   if (!f) return ASK_SERVER_ERROR;
   f.print(head);
   f.write(wav, 44);                              // placeholder, sizes known after recording
+#if SPARKY_TEST_QUESTION
+  size_t samples = testQuestion(f, buttonHeld);
+#else
   size_t samples = micRecord(f, MAX_QUESTION_MS, buttonHeld);
+#endif
   f.print("\r\n--" BOUNDARY "--\r\n");
   f.close();
   if (samples < 16000UL * MIN_QUESTION_MS / 1000) {

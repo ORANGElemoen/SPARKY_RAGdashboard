@@ -31,8 +31,8 @@ static String serverUrl, deviceKey, classCode;
 void settingsBegin() {
   pinMode(PIN_BUTTON, INPUT_PULLUP);
   prefs.begin("sparky", false);
-  serverUrl = prefs.getString("server", "");
-  deviceKey = prefs.getString("key", "");
+  serverUrl = prefs.getString("server", SPARKY_SERVER);
+  deviceKey = prefs.getString("key", SPARKY_DEVICE_KEY);
   classCode = prefs.getString("class", "");
 
   WiFiManager wm;

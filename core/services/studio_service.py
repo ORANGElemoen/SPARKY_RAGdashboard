@@ -39,6 +39,7 @@ TRIGGERS = {
     "server_error": "When the tutor server doesn't answer",
     "goodbye": "Before going to sleep",
     "custom": "Your own use",
+    "test_question": "Bench test: sent as the question instead of the mic (firmware test mode)",
 }
 DEVICE_SAMPLE_RATE = 16000          # Hz, mono 16-bit: small enough for flash, clear enough for speech
 FLASH_BUDGET_BYTES = 1_000_000      # rough space for voice lines on a 4 MB ESP32 (estimate)
