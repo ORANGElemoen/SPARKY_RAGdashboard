@@ -5,6 +5,7 @@
 //   1 face display (M-05)      4 record + play back (M-01/M-04)   7 touch pad (M-20)
 //   2 speaker tone (M-04)      5 mic sample rate (M-02)           8 accent LED (M-20)
 //   3 mic level meter (M-01)   6 button counter (M-07)            9 power stress (M-08)
+//   0 all LEDs on, you set the brightness with + and - (finds dim columns / weak contacts)
 //   q stops a running test.
 //
 // Pins must match firmware/sparky/config.h (report pin map).
@@ -273,6 +274,26 @@ void testLed() {
   Serial.println("  PASS if the blink and the pulse looked distinct. Never lit -> LED the wrong way round?");
 }
 
+void testBrightness() {
+  Serial.println("\n[0] All LEDs on. Type + (brighter) or - (dimmer), then Enter. q = stop");
+  int level = 0;
+  for (int r = 0; r < 8; r++) for (int c = 0; c < 32; c++) setPixel(r, c, true);
+  mx.control(MD_MAX72XX::INTENSITY, level);
+  Serial.printf("  brightness %d of 15\n", level);
+  for (;;) {
+    if (!Serial.available()) { delay(10); continue; }
+    char k = Serial.read();
+    if (k == 'q' || k == 'Q') break;
+    if (k != '+' && k != '-') continue;
+    level = constrain(level + (k == '+' ? 1 : -1), 0, 15);
+    mx.control(MD_MAX72XX::INTENSITY, level);
+    Serial.printf("  brightness %d of 15\n", level);
+  }
+  mx.clear();
+  mx.control(MD_MAX72XX::INTENSITY, 3);
+  Serial.println("  PASS if every column looked equally bright at every level.");
+}
+
 void testPower() {
   Serial.println("\n[9] Power stress (M-08): all LEDs on + beep, brightness 2 -> 5 -> 8. Watch for a reset.");
   for (int level : {2, 5, 8}) {
@@ -294,6 +315,7 @@ void menu() {
   Serial.println(" 1 face display      4 record + play back   7 touch pad");
   Serial.println(" 2 speaker tone      5 mic sample rate      8 accent LED");
   Serial.println(" 3 mic level meter   6 button counter       9 power stress");
+  Serial.println(" 0 all LEDs on, + / - brightness");
   Serial.print("Type a number: ");
 }
 
@@ -328,6 +350,7 @@ void loop() {
     case '7': testTouch(); break;
     case '8': testLed(); break;
     case '9': testPower(); break;
+    case '0': testBrightness(); break;
     default: return;                              // ignore newlines etc.
   }
   menu();
