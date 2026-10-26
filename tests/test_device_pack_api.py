@@ -70,9 +70,11 @@ def test_commands_204_then_face(monkeypatch):
 def test_status_report_is_kept_alongside_sync():
     c = _client(SPARKY)
     r = c.post("/api/v1/device/status", json={"rssi": -67, "answer_audio_s": 25.4, "answer_stalls": 2,
-                                               "answer_stall_ms": 900})
+                                               "answer_stall_ms": 900, "answer_latency_ms": 3100,
+                                               "answer_complete": True, "uptime_s": 420})
     assert r.status_code == 200
     c.post("/api/v1/device/pack/ack", json={"pack_version": "abcd1234abcd1234", "free_bytes": 1})
     rec = studio.device_sync()["7"]
     assert rec["rssi"] == -67 and rec["answer_stalls"] == 2 and rec["pack_version"] == "abcd1234abcd1234"
+    assert rec["answer_latency_ms"] == 3100 and rec["answer_complete"] is True and rec["uptime_s"] == 420
     assert c.post("/api/v1/device/status", json={"rssi": 5}).status_code == 422   # not a real signal level

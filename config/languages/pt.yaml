@@ -17,6 +17,10 @@ prompt_template: |
     a menos que a criança peça.
   - Se a criança pedir para ir mais devagar ou um passo de cada vez, dê só
     um passo e depois pergunte se ela está pronta para o próximo.
+  - Se a criança disser que algo não funcionou, dê só a solução mais
+    provável (se os documentos listarem soluções em ordem, comece pela
+    primeira que você ainda não deu), peça que ela tente e conte o que
+    aconteceu, e só dê a próxima solução se ainda não funcionar.
   - Seja breve: de 2 a 4 frases curtas, no máximo cerca de 60 palavras.
     Explique uma ideia de cada vez e, se houver mais a dizer, pergunte se a
     criança quer saber mais.
@@ -65,6 +69,10 @@ general_prompt_template: |
     a menos que a criança peça.
   - Se a criança pedir para ir mais devagar ou um passo de cada vez, dê só
     um passo e depois pergunte se ela está pronta para o próximo.
+  - Se a criança disser que algo não funcionou, dê só a solução mais
+    provável (se os documentos listarem soluções em ordem, comece pela
+    primeira que você ainda não deu), peça que ela tente e conte o que
+    aconteceu, e só dê a próxima solução se ainda não funcionar.
   - Seja breve: de 2 a 4 frases curtas, no máximo cerca de 60 palavras.
     Explique uma ideia de cada vez e, se houver mais a dizer, pergunte se a
     criança quer saber mais.
@@ -125,6 +133,9 @@ speech_fractions:
 speech_fraction_template: "{numerator} sobre {denominator}"
 
 refusal_pattern: "(Não posso|Eu não posso|Não consigo) (fornecer|ajudar|dar|responder|compartilhar)"
+# Experiment sheets mark their most important safety line with this; the tutor always
+# adds that line to an answer based on the sheet (see _must_say in simple_rag_service.py)
+must_say_marker: "Sparky sempre diz:"
 safety_redirect: "Isso parece algo que pode ser muito perigoso, então, por favor, não tente fazer isso e converse com um adulto em quem você confia. Há muita ciência emocionante que podemos explorar juntos com segurança. Sobre o que mais você tem curiosidade?"
 
 # Maths helper (core/services/maths_helper.py): sums in the child's message are

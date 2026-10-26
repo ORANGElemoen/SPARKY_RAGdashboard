@@ -367,8 +367,10 @@ async function loadDevices() {
                      : d.up_to_date ? 'Up to date' : 'Waiting to update';
         const space = d.free_bytes == null ? '-' : `${Math.round(d.free_bytes / 1024)} KB`;
         const wifi = d.rssi == null ? '-' : `${d.rssi} dBm (${d.rssi >= -60 ? 'strong' : d.rssi >= -70 ? 'OK' : d.rssi >= -80 ? 'weak' : 'very weak'})`;
-        const answer = d.answer_stalls == null ? '-' : d.answer_stalls === 0 ? 'smooth'
-                     : `${d.answer_stalls} stutter${d.answer_stalls > 1 ? 's' : ''} (${(d.answer_stall_ms / 1000).toFixed(1)} s)`;
+        let answer = d.answer_stalls == null ? '-' : d.answer_stalls === 0 ? 'smooth'
+                   : `${d.answer_stalls} stutter${d.answer_stalls > 1 ? 's' : ''} (${(d.answer_stall_ms / 1000).toFixed(1)} s)`;
+        if (d.answer_complete === false) answer += ', CUT OFF';
+        if (d.answer_latency_ms != null) answer += ` - first word ${(d.answer_latency_ms / 1000).toFixed(1)} s`;
         body.append(h('tr', {}, h('td', {}, d.name), h('td', {}, status), h('td', {}, wifi), h('td', {}, answer),
                          h('td', {class: 'muted'}, d.last_seen_at || 'never'), h('td', {}, space)));
     }

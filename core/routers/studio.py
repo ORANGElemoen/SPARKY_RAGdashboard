@@ -163,7 +163,9 @@ async def list_studio_devices():
                     "pack_version": s.get("pack_version"), "up_to_date": s.get("pack_version") == current,
                     "free_bytes": s.get("free_bytes"), "error": s.get("error"), "synced_at": s.get("at"),
                     "rssi": s.get("rssi"), "answer_audio_s": s.get("answer_audio_s"),
-                    "answer_stalls": s.get("answer_stalls"), "answer_stall_ms": s.get("answer_stall_ms")})
+                    "answer_stalls": s.get("answer_stalls"), "answer_stall_ms": s.get("answer_stall_ms"),
+                    "answer_latency_ms": s.get("answer_latency_ms"), "answer_complete": s.get("answer_complete"),
+                    "uptime_s": s.get("uptime_s")})
     return {"pack_version": current, "devices": out}
 
 

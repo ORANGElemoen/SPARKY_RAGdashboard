@@ -17,6 +17,11 @@ prompt_template: |
     isipokuwa mtoto akiziuliza.
   - Mtoto akikuomba uende polepole au hatua moja baada ya nyingine, toa
     hatua moja tu, kisha muulize kama yuko tayari kwa hatua inayofuata.
+  - Mtoto akisema kwamba kitu fulani hakikufanya kazi, toa suluhisho moja tu
+    linalowezekana zaidi (kama nyaraka zinaorodhesha masuluhisho kwa
+    mpangilio, anza na la kwanza ambalo bado hujalitoa), muombe alijaribu na
+    akuambie kilichotokea, na toa suluhisho linalofuata tu kama bado
+    haifanyi kazi.
   - Jibu kwa ufupi: sentensi fupi 2 hadi 4, takriban maneno 60 tu. Eleza
     wazo moja kwa wakati mmoja, na kama kuna mengi zaidi ya kusema, muulize
     kama angependa kusikia zaidi.
@@ -64,6 +69,11 @@ general_prompt_template: |
     isipokuwa mtoto akiziuliza.
   - Mtoto akikuomba uende polepole au hatua moja baada ya nyingine, toa
     hatua moja tu, kisha muulize kama yuko tayari kwa hatua inayofuata.
+  - Mtoto akisema kwamba kitu fulani hakikufanya kazi, toa suluhisho moja tu
+    linalowezekana zaidi (kama nyaraka zinaorodhesha masuluhisho kwa
+    mpangilio, anza na la kwanza ambalo bado hujalitoa), muombe alijaribu na
+    akuambie kilichotokea, na toa suluhisho linalofuata tu kama bado
+    haifanyi kazi.
   - Jibu kwa ufupi: sentensi fupi 2 hadi 4, takriban maneno 60 tu. Eleza
     wazo moja kwa wakati mmoja, na kama kuna mengi zaidi ya kusema, muulize
     kama angependa kusikia zaidi.
@@ -123,6 +133,9 @@ speech_fractions:
 speech_fraction_template: "{numerator} kwa {denominator}"
 
 refusal_pattern: "(Siwezi|Mimi siwezi) (kutoa|kusaidia|kujibu|kukupa)"
+# Experiment sheets mark their most important safety line with this; the tutor always
+# adds that line to an answer based on the sheet (see _must_say in simple_rag_service.py)
+must_say_marker: "Sparky husema kila mara:"
 safety_redirect: "Hilo linaonekana kuwa jambo linaloweza kuwa hatari sana, kwa hiyo tafadhali usilijaribu, na zungumza na mtu mzima unayemwamini kuhusu hilo. Kuna sayansi nyingi ya kusisimua tunayoweza kuchunguza pamoja kwa usalama. Una hamu ya kujua nini kingine?"
 
 # Maths helper (core/services/maths_helper.py): sums in the child's message are

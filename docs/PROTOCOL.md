@@ -50,9 +50,10 @@ The **response format** is chosen by the `Accept` header:
 |---------------------------------|---------------------------------------------|
 | *(absent / anything else)*      | JSON + base64 WAV (browser default, unchanged) |
 | `application/x-tutor-voice`     | Framed binary format described below       |
+| `application/x-tutor-voice; version=2` | Same framing, streamed while the answer is written (see "Version 2") |
 
 A real device should always send both `X-Device-Key` and
-`Accept: application/x-tutor-voice`.
+`Accept: application/x-tutor-voice` (Sparky's firmware sends `version=2`).
 
 ## Response framing (`application/x-tutor-voice`)
 
@@ -106,6 +107,28 @@ by the stream itself.
   spoken audio and `answer_text` to be word-for-word identical.
 - `sources` is empty when `used_general_knowledge` is true — display that
   distinction plainly rather than showing an empty list.
+
+### Version 2 (streaming)
+
+`Accept: application/x-tutor-voice; version=2`. In version 1 the metadata
+can only be sent once the whole answer has been written (it carries
+`answer_text` and `frame_count`). In version 2 each sentence is spoken as
+soon as the AI has written it, so the child hears the answer start while
+the rest is still being generated (REQ-N-01: about 3.6 s instead of 6.3 s
+on the server).
+
+```
+[len][metadata JSON]        protocol_version 2, frame_count: null, no answer_text
+[len][WAV]  ...             one per sentence, as each is written
+[len][summary JSON]         {"protocol_version": 2, "answer_text": "...", "frame_count": N}
+```
+
+- Same length-prefixed blocks. A block after the metadata is audio if it
+  starts with `RIFF`; otherwise it is the closing summary (always the last
+  block).
+- Use the summary's `frame_count` to check that every sentence arrived.
+- The transcript-too-short and error cases still send metadata, the spoken
+  retry/error prompt, then the summary.
 
 ## Sessions
 

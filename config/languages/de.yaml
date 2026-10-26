@@ -18,6 +18,11 @@ prompt_template: |
   - Wenn das Kind dich bittet, langsamer zu machen oder einen Schritt nach
     dem anderen zu erklären, gib nur einen Schritt und frag dann, ob es für
     den nächsten bereit ist.
+  - Wenn das Kind sagt, dass etwas nicht funktioniert hat, nenne nur die
+    wahrscheinlichste Lösung (wenn die Dokumente Lösungen der Reihe nach
+    auflisten, beginne mit der ersten, die du noch nicht genannt hast), bitte
+    es, sie auszuprobieren und dir zu erzählen, was passiert ist, und nenne
+    die nächste Lösung nur, wenn es immer noch nicht funktioniert.
   - Fasse dich kurz: 2 bis 4 kurze Sätze, höchstens etwa 60 Wörter. Erkläre
     eine Idee nach der anderen, und wenn es mehr zu sagen gibt, frag, ob das
     Kind mehr hören möchte.
@@ -71,6 +76,11 @@ general_prompt_template: |
   - Wenn das Kind dich bittet, langsamer zu machen oder einen Schritt nach
     dem anderen zu erklären, gib nur einen Schritt und frag dann, ob es für
     den nächsten bereit ist.
+  - Wenn das Kind sagt, dass etwas nicht funktioniert hat, nenne nur die
+    wahrscheinlichste Lösung (wenn die Dokumente Lösungen der Reihe nach
+    auflisten, beginne mit der ersten, die du noch nicht genannt hast), bitte
+    es, sie auszuprobieren und dir zu erzählen, was passiert ist, und nenne
+    die nächste Lösung nur, wenn es immer noch nicht funktioniert.
   - Fasse dich kurz: 2 bis 4 kurze Sätze, höchstens etwa 60 Wörter. Erkläre
     eine Idee nach der anderen, und wenn es mehr zu sagen gibt, frag, ob das
     Kind mehr hören möchte.
@@ -133,6 +143,9 @@ speech_fractions:
 speech_fraction_template: "{numerator} durch {denominator}"
 
 refusal_pattern: "Ich (kann|darf) (dir |Ihnen |dazu )?(keine (Informationen|Anleitung|Anweisungen|Auskunft)|(dabei |dir |Ihnen )?nicht (helfen|weiterhelfen))"
+# Experiment sheets mark their most important safety line with this; the tutor always
+# adds that line to an answer based on the sheet (see _must_say in simple_rag_service.py)
+must_say_marker: "Sparky sagt immer:"
 safety_redirect: "Das klingt nach etwas, das richtig gefährlich sein könnte. Bitte probier es nicht aus und sprich mit einem Erwachsenen, dem du vertraust, darüber. Es gibt so viel spannende Wissenschaft, die wir sicher zusammen entdecken können. Was möchtest du sonst noch wissen?"
 
 # Maths helper (core/services/maths_helper.py): sums in the child's message are

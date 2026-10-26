@@ -7,6 +7,7 @@ import asyncio
 import logging
 import os
 import re
+import threading
 from datetime import datetime
 from pathlib import Path
 from typing import Any, Dict, List, Optional
@@ -71,6 +72,7 @@ DEFAULT_LANGUAGE_STRINGS = {
         "try it, and talk to a grown-up you trust about it. There's lots of exciting "
         "science we can explore safely together. What else are you curious about?"
     ),
+    "must_say_marker": "Sparky always says:",
 }
 
 
@@ -148,6 +150,48 @@ def _soften_refusal(text: str, strings: Dict[str, str]) -> str:
         if pattern and re.match(pattern, text.strip(), re.IGNORECASE):
             return strings["safety_redirect"]
     return text
+
+
+# How much retrieved text the LLM reads per answer (more = slower answers on a small model)
+MAX_CONTEXT_CHARS = 2000
+# A result this close to the best score counts as "about as relevant"
+CLOSE_SIMILARITY = 0.15  # 0.1 let a 0.65 book chunk beat the 0.55 red cabbage sheet
+
+
+def _whole_results_first(results: List[Dict]) -> List[Dict]:
+    """Put results that fit in the context whole (a short experiment sheet, a saved good answer)
+    ahead of long book chunks that would be cut off - if they are about as relevant as the best.
+
+    Otherwise one ~3000-character book chunk that scored slightly higher fills the whole context
+    and the sheet written for exactly that question never reaches the LLM.
+    """
+    if not results:
+        return results
+    best = max(r["similarity"] for r in results)
+
+    def fits(r):
+        return len(r["text"]) <= MAX_CONTEXT_CHARS and r["similarity"] >= best - CLOSE_SIMILARITY
+
+    return sorted(results, key=lambda r: not fits(r))  # stable: score order kept within each group
+
+
+def _must_say(text: str, marker: Optional[str]) -> Optional[str]:
+    """The sentence after the language's must-say marker in a document ("Sparky always says:
+    Never drink the water from your filter!"), or None. The small LLM often drops a sheet's most
+    important safety line from a 60-word answer, so the tutor adds this one itself."""
+    if not marker or marker not in text:
+        return None
+    rest = " ".join(text.split(marker, 1)[1].split())   # PDF text breaks lines anywhere
+    found = re.match(r"(.+?[.!?])(\s|$)", rest)
+    return found.group(1) if found else None
+
+
+# Sentence boundary for spoken answers: end punctuation followed by space, so "3.5" stays whole.
+_SENTENCE_RE = re.compile(r"(?<=[.!?])\s+")
+
+
+def _split_spoken(text: str) -> List[str]:
+    return [x.strip() for x in _SENTENCE_RE.split(text.strip()) if x.strip()]
 
 
 _SENTENCE_END_CHARS = ".!?…\"'”)"
@@ -246,7 +290,7 @@ class SimpleRAGService:
                 )
 
             # 3. Search for relevant documents
-            search_results = await self._search_documents(query)
+            search_results = await self._search_with_history(query, conversation_history)
 
             # 4. Generate AI answer (grounded in documents if any were found,
             # otherwise the tutor falls back to its own general knowledge)
@@ -343,6 +387,19 @@ class SimpleRAGService:
             return False
         return True
 
+    async def _search_with_history(
+        self, query: str, history: Optional[List[Dict[str, str]]]
+    ) -> List[Dict[str, Any]]:
+        """Search for the question; if nothing matches and it's part of a conversation, retry
+        with each earlier question (newest first). A follow-up like "It's not lighting up"
+        matches no document on its own, but "make a lemon battery ... It's not lighting up" does."""
+        results = await self._search_documents(query)
+        for turn in reversed(history or []):
+            if results:
+                break
+            results = await self._search_documents(f"{turn['question_text']} {query}")
+        return results
+
     async def _search_documents(self, query: str) -> List[Dict[str, Any]]:
         """Search for relevant documents"""
         try:
@@ -382,133 +439,154 @@ class SimpleRAGService:
             logger.error(f"Document search failed: {e}")
             return []
 
+    def _prepare_answer(
+        self,
+        query: str,
+        search_results: List[Dict],
+        conversation_history: Optional[List[Dict[str, str]]],
+        strings: Dict[str, str],
+    ) -> Dict[str, Any]:
+        """Everything before the LLM call: maths note, prompt and sources.
+
+        Shared by the whole-answer path (_generate_answer) and the streaming path
+        (answer_query_stream), so both answer in exactly the same way.
+        """
+        # Small models get arithmetic wrong, so any sum in the message is
+        # worked out exactly here and given to the model to explain.
+        try:
+            previous = conversation_history[-1]["question_text"] if conversation_history else None
+            note = maths_note(query, previous, strings)
+        except Exception as e:
+            logger.warning(f"Maths helper failed, answering without it: {e}")
+            note = ""
+        query = f"{query}\n{note}" if note else query
+        history_block = self._build_conversation_history_block(conversation_history or [], strings)
+
+        if not search_results:
+            # No relevant documents: fall back to the tutor's own general
+            # knowledge instead of refusing to answer
+            prompt = strings["general_prompt_template"].format(
+                query=query,
+                conversation_history=history_block,
+                grade_instruction=grade_instruction(strings),
+            )
+            return {"prompt": prompt, "sources": [], "confidence": 0.0, "used_general_knowledge": True,
+                    "temperature": 0.6,  # More creative/exploratory for open-ended teaching
+                    "cacheable": False, "context": "", "must_say": None}
+
+        # Prepare context from the actual retrieved document chunks
+        search_results = _whole_results_first(search_results)
+        context_parts = []
+        sources = []
+        for i, result in enumerate(search_results, 1):
+            context_parts.append(f"[{i}]: {result['text']}")
+            sources.append(
+                {
+                    "id": i,
+                    "document_id": result["document_id"],
+                    "document_name": result.get("document_name"),
+                    "similarity": result["similarity"],
+                    "download_url": (
+                        f"/api/v1/documents/{result['document_id']}/download"
+                        if result.get("has_file", True)
+                        else ""
+                    ),
+                    "text": result["text"],
+                    "chunk_id": result["chunk_id"],
+                }
+            )
+
+        context = "\n\n".join(context_parts)
+        if len(context) > MAX_CONTEXT_CHARS:
+            context = context[:MAX_CONTEXT_CHARS] + "\n\n" + strings["truncated_notice"]
+        logger.debug(f"Context for prompt: {context[:800]}...")
+
+        prompt = strings["prompt_template"].format(
+            context=context,
+            query=query,
+            conversation_history=history_block,
+            grade_instruction=grade_instruction(strings),
+        )
+        # Cache on the full prompt plus the model, so a hit can never
+        # return an answer made for a different conversation, language,
+        # grade, prompt wording or model (switching models in the admin
+        # dashboard used to keep serving the old model's answers).
+        # The top document's must-say safety line - once per conversation, not on every follow-up
+        must_say = _must_say(search_results[0]["text"], strings.get("must_say_marker"))
+        if must_say and any(must_say.lower() in (turn.get("answer_text") or "").lower()
+                            for turn in conversation_history or []):
+            must_say = None
+        return {"prompt": prompt, "sources": sources,
+                "confidence": max(r["similarity"] for r in search_results),
+                "used_general_knowledge": False,
+                "temperature": 0.4,  # Some room for a fun, engaging tone
+                "cacheable": True, "context": context, "must_say": must_say}
+
+    def _finish_answer(self, response: str, prep: Dict[str, Any], strings: Dict[str, str]) -> Dict[str, Any]:
+        """Everything after the LLM call: tidy the text, soften refusals, add citations."""
+        answer_text = response if response else strings["no_answer_generated"]
+        trimmed = _trim_to_complete_sentence(answer_text)
+        answer_text = _soften_refusal(trimmed, strings)
+        must_say = prep.get("must_say")
+        if response and must_say and answer_text == trimmed and must_say.lower() not in answer_text.lower():
+            answer_text = f"{answer_text} {must_say}"  # not onto a refusal's safety redirect
+        spoken_text = answer_text  # Citations below are for display, not speech
+
+        # Add source footer - only when an answer was actually generated,
+        # otherwise this would cite sources for an answer that doesn't exist
+        sources = prep["sources"]
+        if response and sources and self.config.require_sources:
+            answer_text += f"\n\n{strings['sources_label']}:\n" + "\n".join(
+                strings["source_line"].format(id=s["id"], document_id=s["document_id"], url=s["download_url"])
+                for s in sources
+            )
+
+        result = {
+            "text": answer_text,
+            "spoken_text": spoken_text,
+            "sources": sources,
+            "confidence": prep["confidence"],
+            "used_general_knowledge": prep["used_general_knowledge"],
+        }
+        if not prep["used_general_knowledge"]:
+            context, prompt = prep["context"], prep["prompt"]
+            result["debug_context"] = context[:500] + "..." if len(context) > 500 else context
+            result["debug_prompt"] = prompt[:500] + "..." if len(prompt) > 500 else prompt
+        return result
+
     async def _generate_answer(
         self,
         query: str,
         search_results: List[Dict],
         conversation_history: Optional[List[Dict[str, str]]] = None,
     ) -> Dict[str, Any]:
-        """Generate AI answer from search results"""
+        """Generate the whole AI answer (grounded in documents if any were found)"""
         strings = load_language_strings()
         try:
-            # Small models get arithmetic wrong, so any sum in the message is
-            # worked out exactly here and given to the model to explain.
-            try:
-                previous = conversation_history[-1]["question_text"] if conversation_history else None
-                note = maths_note(query, previous, strings)
-            except Exception as e:
-                logger.warning(f"Maths helper failed, answering without it: {e}")
-                note = ""
-            query = f"{query}\n{note}" if note else query
-
-            if not search_results:
-                # No relevant documents: fall back to the tutor's own
-                # general knowledge instead of refusing to answer
-                return await self._generate_general_answer(
-                    query, strings, conversation_history
-                )
-
-            # Prepare context from the actual retrieved document chunks
-            context_parts = []
-            sources = []
-
-            for i, result in enumerate(search_results, 1):
-                context_parts.append(f"[{i}]: {result['text']}")
-                sources.append(
-                    {
-                        "id": i,
-                        "document_id": result["document_id"],
-                        "document_name": result.get("document_name"),
-                        "similarity": result["similarity"],
-                        "download_url": (
-                            f"/api/v1/documents/{result['document_id']}/download"
-                            if result.get("has_file", True)
-                            else ""
-                        ),
-                        "text": result["text"],
-                        "chunk_id": result["chunk_id"],
-                    }
-                )
-
-            context = "\n\n".join(context_parts)
-
-            # Truncate context if too long for performance
-            max_context_length = 2000  # Increased to provide meaningful context
-            if len(context) > max_context_length:
-                context = (
-                    context[:max_context_length] + "\n\n" + strings["truncated_notice"]
-                )
-
-            history_block = self._build_conversation_history_block(
-                conversation_history or [], strings
-            )
-
-            logger.debug(f"Context for prompt: {context[:800]}...")
-
-            prompt = strings["prompt_template"].format(
-                context=context,
-                query=query,
-                conversation_history=history_block,
-                grade_instruction=grade_instruction(strings),
-            )
-
-            # Cache on the full prompt plus the model, so a hit can never
-            # return an answer made for a different conversation, language,
-            # grade, prompt wording or model (switching models in the admin
-            # dashboard used to keep serving the old model's answers).
+            prep = self._prepare_answer(query, search_results, conversation_history, strings)
             model = getattr(self.llm_client, "model", "")
-            cached_response = self.cache.get(prompt, "", extra=model)
-            if cached_response:
-                return cached_response
+            if prep["cacheable"]:
+                cached_response = self.cache.get(prep["prompt"], "", extra=model)
+                if cached_response:
+                    return cached_response
 
             response = await asyncio.to_thread(
                 self.llm_client.generate_answer,
-                query=prompt,
+                query=prep["prompt"],
                 context="",  # Context is already embedded in the prompt
                 max_tokens=600,  # Enough room to finish a full explanation
-                temperature=0.4,  # Some room for a fun, engaging tone
+                temperature=prep["temperature"],
                 max_retries=1,  # Single attempt only
                 is_complete_prompt=True,
             )
-
-            answer_text = response if response else strings["no_answer_generated"]
-            answer_text = _soften_refusal(_trim_to_complete_sentence(answer_text), strings)
-            spoken_text = answer_text  # Citations below are for display, not speech
-
-            # Add source footer - only when an answer was actually generated,
-            # otherwise this would cite sources for an answer that doesn't exist
-            if response and sources and self.config.require_sources:
-                source_footer = f"\n\n{strings['sources_label']}:\n" + "\n".join(
-                    [
-                        strings["source_line"].format(
-                            id=s["id"],
-                            document_id=s["document_id"],
-                            url=s["download_url"],
-                        )
-                        for s in sources
-                    ]
-                )
-                answer_text += source_footer
-
-            result = {
-                "text": answer_text,
-                "spoken_text": spoken_text,
-                "sources": sources,
-                "confidence": max(r["similarity"] for r in search_results),
-                "used_general_knowledge": False,
-                "debug_context": (
-                    context[:500] + "..." if len(context) > 500 else context
-                ),
-                "debug_prompt": prompt[:500] + "..." if len(prompt) > 500 else prompt,
-            }
+            result = self._finish_answer(response, prep, strings)
 
             # Cache the result for future queries - but only a real answer.
             # Caching a "no answer" fallback would keep serving it to every
             # future learner who hits the same query/context for up to the
             # cache's TTL, even after the LLM recovers from a transient failure.
-            if response:
-                self.cache.set(prompt, "", result, extra=model)
-
+            if response and prep["cacheable"]:
+                self.cache.set(prep["prompt"], "", result, extra=model)
             return result
 
         except Exception as e:
@@ -518,56 +596,122 @@ class SimpleRAGService:
                 "spoken_text": strings["answer_generation_error"],
                 "sources": [],
                 "confidence": 0.0,
-                "used_general_knowledge": False,
+                "used_general_knowledge": not search_results,
             }
 
-    async def _generate_general_answer(
+    async def answer_query_stream(
         self,
         query: str,
-        strings: Dict[str, str],
-        conversation_history: Optional[List[Dict[str, str]]] = None,
-    ) -> Dict[str, Any]:
-        """Answer using the tutor's own knowledge when no uploaded document is relevant"""
+        query_type: str = "text",
+        session_id: Optional[str] = None,
+        device_id: Optional[int] = None,
+    ):
+        """Like answer_query, but hands the answer over while the LLM is still writing it.
+
+        Async generator of (kind, payload):
+          ("meta", {sources, confidence, used_general_knowledge})  - once, before the answer
+          ("sentence", text)                                         - each finished sentence
+          ("done", <the same dict answer_query returns>)             - last
+        The voice pipeline speaks sentence 1 while sentence 2 is being written, so the
+        child hears the answer start seconds earlier (REQ-N-01).
+        """
+        strings = load_language_strings()
+        if not self._is_valid_query(query):
+            yield ("done", self._error_response("Invalid query"))
+            return
         try:
-            history_block = self._build_conversation_history_block(
-                conversation_history or [], strings
-            )
-            prompt = strings["general_prompt_template"].format(
-                query=query,
-                conversation_history=history_block,
-                grade_instruction=grade_instruction(strings),
-            )
-
-            response = await asyncio.to_thread(
-                self.llm_client.generate_answer,
-                query=prompt,
-                context="",
-                max_tokens=600,  # Enough room to finish a full explanation
-                temperature=0.6,  # More creative/exploratory for open-ended teaching
-                max_retries=1,
-                is_complete_prompt=True,
-            )
-
-            answer_text = response if response else strings["no_answer_generated"]
-            answer_text = _soften_refusal(_trim_to_complete_sentence(answer_text), strings)
-
-            return {
-                "text": answer_text,
-                "spoken_text": answer_text,
-                "sources": [],
-                "confidence": 0.0,
-                "used_general_knowledge": True,
-            }
-
+            history = []
+            if session_id and self.interaction_log_repo:
+                history = await self.interaction_log_repo.get_recent_turns(
+                    session_id, limit=self.config.max_conversation_turns
+                )
+            search_results = await self._search_with_history(query, history)
+            prep = self._prepare_answer(query, search_results, history, strings)
         except Exception as e:
-            logger.error(f"General answer generation failed: {e}")
-            return {
-                "text": strings["answer_generation_error"],
-                "spoken_text": strings["answer_generation_error"],
-                "sources": [],
-                "confidence": 0.0,
-                "used_general_knowledge": True,
-            }
+            logger.error(f"Query processing failed: {e}")
+            yield ("done", self._error_response(f"Processing failed: {str(e)}"))
+            return
+
+        yield ("meta", {k: prep[k] for k in ("sources", "confidence", "used_general_knowledge")})
+
+        model = getattr(self.llm_client, "model", "")
+        cached = self.cache.get(prep["prompt"], "", extra=model) if prep["cacheable"] else None
+        spoken: List[str] = []
+        if cached:
+            result = cached
+        else:
+            text, refused, stop = "", False, threading.Event()
+            try:
+                async for chunk in self._stream_llm(prep, stop):
+                    text += chunk
+                    finished = [x.strip() for x in _SENTENCE_RE.split(text)[:-1] if x.strip()]
+                    for sentence in finished[len(spoken):]:
+                        # A canned refusal shows in the first sentence: stop and redirect instead
+                        if not spoken and _soften_refusal(sentence, strings) != sentence:
+                            refused = True
+                            break
+                        spoken.append(sentence)
+                        yield ("sentence", sentence)
+                    if refused:
+                        stop.set()
+                        break
+            except Exception as e:
+                logger.error(f"Streaming answer failed: {e}")
+                text = " ".join(spoken)  # keep what was already said
+            if refused:
+                result = self._finish_answer(strings["safety_redirect"], {**prep, "must_say": None}, strings)
+            elif not text and not spoken:
+                result = self._finish_answer("", prep, strings)
+            else:
+                result = self._finish_answer(text, prep, strings)
+                if prep["cacheable"]:
+                    self.cache.set(prep["prompt"], "", result, extra=model)
+
+        # Whatever the finished answer has beyond what was already said (or all of it, from the cache)
+        for sentence in _split_spoken(result["spoken_text"])[len(spoken):]:
+            yield ("sentence", sentence)
+
+        response = {
+            "answer": result["text"],
+            "spoken_answer": result.get("spoken_text", result["text"]),
+            "sources": result["sources"],
+            "timestamp": datetime.utcnow().isoformat(),
+            "query": query,
+            "confidence": result["confidence"],
+            "used_general_knowledge": result.get("used_general_knowledge", False),
+        }
+        if self.interaction_log_repo:
+            asyncio.create_task(self._log_interaction(query, response, query_type, session_id, device_id))
+        yield ("done", response)
+
+    async def _stream_llm(self, prep: Dict[str, Any], stop: "threading.Event"):
+        """The LLM's text, piece by piece, from a worker thread (generation blocks)."""
+        loop = asyncio.get_running_loop()
+        queue: asyncio.Queue = asyncio.Queue()
+        end = object()
+
+        def worker():
+            try:
+                for chunk in self.llm_client.generate_stream(
+                    prep["prompt"], max_tokens=600, temperature=prep["temperature"], stop=stop
+                ):
+                    loop.call_soon_threadsafe(queue.put_nowait, chunk)
+            except Exception as e:  # handed to the reader, which raises it
+                loop.call_soon_threadsafe(queue.put_nowait, e)
+            finally:
+                loop.call_soon_threadsafe(queue.put_nowait, end)
+
+        loop.run_in_executor(None, worker)
+        try:
+            while True:
+                item = await queue.get()
+                if item is end:
+                    return
+                if isinstance(item, Exception):
+                    raise item
+                yield item
+        finally:
+            stop.set()  # the reader stopped early: let the worker end the generation
 
     def _error_response(self, message: str) -> Dict[str, Any]:
         """Response for errors"""

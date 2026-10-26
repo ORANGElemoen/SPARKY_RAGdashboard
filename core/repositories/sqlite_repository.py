@@ -356,9 +356,11 @@ class SQLiteDocumentRepository(SQLiteRepository, IDocumentRepository):
     async def list_all(
         self, options: Optional[SearchOptions] = None
     ) -> QueryResult[Document]:
-        """List all documents with pagination"""
+        """List all documents, or one page of them when options are given"""
         if not options:
-            options = SearchOptions()
+            # No options = every document (SQLite: LIMIT -1 means no limit). The default page
+            # of 20 used to hide everything past the 20th in the document manager.
+            options = SearchOptions(page_size=-1)
 
         offset = (options.page - 1) * options.page_size
 

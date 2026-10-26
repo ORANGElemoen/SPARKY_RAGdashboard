@@ -7,7 +7,7 @@ import logging
 import time
 from datetime import datetime
 from pathlib import Path
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, Iterator, List, Optional
 
 # Try to import configuration
 try:
@@ -393,6 +393,48 @@ class OllamaClient:
             logger.error(f"Error pulling model {model_name}: {e}")
             return False
 
+    def generate_stream(
+        self, prompt: str, max_tokens: int = 600, temperature: float = 0.4, stop=None
+    ) -> Iterator[str]:
+        """Yield the answer piece by piece while Ollama is still writing it.
+
+        Lets the voice pipeline speak the first sentence before the rest exists.
+        Same options as generate_answer's single-shot call. `stop` is an optional
+        threading.Event: when set, generation is abandoned (the stream is closed).
+        """
+        import json
+
+        import requests
+
+        payload = {
+            "model": self.model,
+            "prompt": prompt,
+            "stream": True,
+            "think": False,
+            "keep_alive": KEEP_ALIVE,
+            "options": {
+                "num_predict": max_tokens,
+                "temperature": temperature,
+                "top_p": 0.9,
+                "top_k": 40,
+                "stop": ["\n\nHuman:", "\n\nQuestion:", "\n\nUser:"],
+            },
+        }
+        with requests.post(
+            f"{self.base_url}/api/generate", json=payload, stream=True, timeout=self.timeout
+        ) as response:
+            response.raise_for_status()
+            for line in response.iter_lines():
+                if stop is not None and stop.is_set():
+                    return
+                if not line:
+                    continue
+                data = json.loads(line)
+                if data.get("response"):
+                    yield data["response"]
+                if data.get("done"):
+                    return
+
     def generate_answer(
         self,
         query: str,
@@ -769,6 +811,10 @@ Answer:"""
                                 "prompt": "Hello, respond with just 'OK'",
                                 "options": {"num_predict": 5, "temperature": 0.1},
                                 "stream": False,
+                                # Thinking models would spend all 5 tokens thinking and
+                                # return an empty answer, so the check reported "Unavailable"
+                                "think": False,
+                                "keep_alive": KEEP_ALIVE,
                             },
                             timeout=10,
                         )

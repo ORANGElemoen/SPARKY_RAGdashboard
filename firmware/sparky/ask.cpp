@@ -1,4 +1,4 @@
-// Voice question: record -> POST /api/v1/voice/query (Accept: application/x-tutor-voice)
+// Voice question: record -> POST /api/v1/voice/query (Accept: application/x-tutor-voice; version=2)
 // -> play each answer sentence as soon as it arrives. Wire format: docs/PROTOCOL.md.
 //
 // The recording goes to LittleFS (8 s = 256 KB is too much RAM next to Wi-Fi), already
@@ -71,6 +71,7 @@ static StreamBufferHandle_t pcm = nullptr;
 static size_t pcmCapacity = 0;
 static volatile bool receiving = false, answerDone = false, playerDone = true;
 static volatile uint32_t playRate = 22050, stalls = 0, stallMs = 0, playedBytes = 0;
+static volatile uint32_t firstAnswerMs = 0;            // when the first word of the answer played
 
 static void playerTask(void*) {
   int16_t raw[512];
@@ -100,6 +101,7 @@ static void playerTask(void*) {
       continue;
     }
     if (!started) {
+      firstAnswerMs = millis();
       facesShowMood(MOOD_TALKING);
       voiceStreamBegin(playRate);
       started = true;
@@ -116,10 +118,12 @@ static void playerTask(void*) {
 }
 
 // Receives the answer body (HTTPClient has already removed the chunked encoding):
-// [u32 BE length][metadata JSON] then frame_count x [u32 BE length][one WAV file].
+// [u32 BE length][metadata JSON] then [u32 BE length][one WAV file] per sentence; protocol v2
+// ends with one more JSON block (answer text + sentence count), told apart by not being "RIFF".
 class AnswerSink : public Stream {
  public:
-  int framesReceived = 0;
+  int framesReceived = 0, framesExpected = -1;
+  uint32_t bytesExpected = 0;   // PCM bytes the server sent, to check nothing was cut off
 
   int available() override { return 0; }
   int read() override { return -1; }
@@ -142,6 +146,29 @@ class AnswerSink : public Stream {
   char* meta = nullptr;
   bool gotMeta = false, firstFrame = true;
 
+  // The metadata block (v1: has answer_text + frame_count; v2: frame_count is null) or the
+  // v2 closing summary (answer_text + frame_count).
+  void finishJson() {
+    if (meta) {
+      meta[need] = 0;
+      JsonDocument filter, doc;
+      filter["transcript"] = true;
+      filter["answer_text"] = true;
+      filter["frame_count"] = true;
+      if (!deserializeJson(doc, meta, need, DeserializationOption::Filter(filter))) {
+        if (doc["transcript"].is<const char*>()) Serial.printf("[ask] heard: \"%s\"\n", (const char*)doc["transcript"]);
+        if (!doc["frame_count"].isNull()) framesExpected = doc["frame_count"];
+        if (doc["answer_text"].is<const char*>())
+          Serial.printf("[ask] answer (%d sentences): %s\n", framesExpected, (const char*)doc["answer_text"]);
+      }
+      free(meta);
+      meta = nullptr;
+    }
+    gotMeta = true;
+    state = LEN;
+    have = 0;
+  }
+
   size_t take(uint8_t* dst, const uint8_t* p, size_t n) {
     size_t k = min((size_t)(need - have), n);
     if (dst) memcpy(dst + have, p, k);
@@ -161,50 +188,39 @@ class AnswerSink : public Stream {
             meta = need <= 32768 ? (char*)malloc(need + 1) : nullptr;   // huge metadata: skip it
             state = META;
           } else {
-            state = need > 44 ? WAVHDR : SKIP;
+            state = WAVHDR;
           }
         }
         return k;
       }
       case META: {
         size_t k = take((uint8_t*)meta, p, n);
-        if (have == need) {
-          if (meta) {
-            meta[need] = 0;
-            JsonDocument filter, doc;
-            filter["transcript"] = true;
-            filter["answer_text"] = true;
-            filter["frame_count"] = true;
-            if (!deserializeJson(doc, meta, need, DeserializationOption::Filter(filter))) {
-              Serial.printf("[ask] heard: \"%s\"\n", (const char*)(doc["transcript"] | ""));
-              Serial.printf("[ask] answer (%d sentences): %s\n", (int)(doc["frame_count"] | 0),
-                            (const char*)(doc["answer_text"] | ""));
-            }
-            free(meta);
-            meta = nullptr;
-          }
-          gotMeta = true;
-          state = LEN;
-          have = 0;
-        }
+        if (have == need) finishJson();
         return k;
       }
-      case WAVHDR: {
-        uint32_t frameLen = need;
-        need = 44;
+      case WAVHDR: {                             // a sentence's WAV header, or the v2 closing summary
+        uint32_t frameLen = need, head = min(frameLen, (uint32_t)44);
+        need = head;
         size_t k = take(hdr, p, n);
         need = frameLen;                         // keep the frame length for the PCM part
-        if (have == 44) {
-          if (firstFrame) {
-            waitFiller();                        // the "let me think" line finishes first
-            playRate = hdr[24] | hdr[25] << 8 | hdr[26] << 16 | (uint32_t)hdr[27] << 24;
-            firstFrame = false;
-          }
-          receiving = true;
-          need = frameLen - 44;                  // PCM bytes in this frame
-          have = 0;
-          state = PCM;
+        if (have < head) return k;
+        if (frameLen <= 44 || memcmp(hdr, "RIFF", 4) != 0) {
+          meta = frameLen <= 32768 ? (char*)malloc(frameLen + 1) : nullptr;
+          if (meta) memcpy(meta, hdr, have);
+          state = META;
+          if (have == need) finishJson();
+          return k;
         }
+        if (firstFrame) {
+          waitFiller();                          // the "let me think" line finishes first
+          playRate = hdr[24] | hdr[25] << 8 | hdr[26] << 16 | (uint32_t)hdr[27] << 24;
+          firstFrame = false;
+        }
+        receiving = true;
+        need = frameLen - 44;                    // PCM bytes in this frame
+        bytesExpected += need;
+        have = 0;
+        state = PCM;
         return k;
       }
       case PCM: {
@@ -262,6 +278,7 @@ AskResult askQuestion(bool (*buttonHeld)()) {
 #else
   size_t samples = micRecord(f, MAX_QUESTION_MS, buttonHeld);
 #endif
+  uint32_t releaseMs = millis();                 // end of the child's question (REQ-N-01 starts here)
   f.print("\r\n--" BOUNDARY "--\r\n");
   f.close();
   voiceChirp(900, 500, 90);                      // "blip": got it
@@ -286,7 +303,7 @@ AskResult askQuestion(bool (*buttonHeld)()) {
   HTTPClient http;
   http.begin(settingsServerUrl() + "/api/v1/voice/query");
   http.addHeader("X-Device-Key", settingsDeviceKey());
-  http.addHeader("Accept", "application/x-tutor-voice");
+  http.addHeader("Accept", "application/x-tutor-voice; version=2");   // v2: answer streams as it's written
   http.addHeader("Content-Type", "multipart/form-data; boundary=" BOUNDARY);
   http.setConnectTimeout(5000);
   http.setTimeout(ANSWER_TIMEOUT_MS);
@@ -301,6 +318,7 @@ AskResult askQuestion(bool (*buttonHeld)()) {
     stalls = 0;
     stallMs = 0;
     playedBytes = 0;
+    firstAnswerMs = 0;
     xTaskCreatePinnedToCore(playerTask, "player", 4096, nullptr, 3, nullptr, 1);
     AnswerSink sink;
     http.writeToStream(&sink);
@@ -309,9 +327,15 @@ AskResult askQuestion(bool (*buttonHeld)()) {
     while (!playerDone) delay(10);
     if (sink.framesReceived > 0) result = ASK_OK;
     float speech = playedBytes / 2.0f / playRate;
+    int32_t latency = firstAnswerMs ? (int32_t)(firstAnswerMs - releaseMs) : -1;
+    // complete = every sentence the server announced arrived, and every byte of it was played
+    bool complete = sink.framesReceived == sink.framesExpected && playedBytes + 1 >= sink.bytesExpected;
     Serial.printf("[ask] played %d sentences, %.1f s of speech, %u stalls (%u ms), Wi-Fi %d dBm\n",
                   sink.framesReceived, speech, (unsigned)stalls, (unsigned)stallMs, WiFi.RSSI());
-    networkReportStatus(speech, stalls, stallMs);
+    Serial.printf("[ask] first word of the answer %.1f s after letting go; %d/%d sentences, %u/%u bytes: %s\n",
+                  latency / 1000.0f, sink.framesReceived, sink.framesExpected, (unsigned)playedBytes,
+                  (unsigned)sink.bytesExpected, complete ? "COMPLETE" : "CUT OFF");
+    networkReportStatus(speech, stalls, stallMs, latency, complete ? 1 : 0);
   } else {
     Serial.printf("[ask] server said %d: %s\n", code, code > 0 ? http.getString().c_str() : http.errorToString(code).c_str());
   }

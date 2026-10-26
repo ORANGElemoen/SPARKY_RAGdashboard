@@ -17,6 +17,11 @@ prompt_template: |
     reviens pas sur des sujets précédents sauf si l'enfant le demande.
   - Si l'enfant te demande d'aller plus lentement ou étape par étape, donne
     une seule étape, puis demande-lui s'il est prêt pour la suivante.
+  - Si l'enfant dit que quelque chose n'a pas marché, donne seulement la
+    solution la plus probable (si les documents donnent des solutions dans
+    l'ordre, commence par la première que tu n'as pas encore donnée),
+    demande-lui de l'essayer et de te dire ce qui s'est passé, et ne donne
+    la solution suivante que si ça ne marche toujours pas.
   - Sois bref : 2 à 4 phrases courtes, environ 60 mots au maximum. Explique
     une idée à la fois, et s'il y a plus à dire, demande à l'enfant s'il veut
     en savoir plus.
@@ -69,6 +74,11 @@ general_prompt_template: |
     reviens pas sur des sujets précédents sauf si l'enfant le demande.
   - Si l'enfant te demande d'aller plus lentement ou étape par étape, donne
     une seule étape, puis demande-lui s'il est prêt pour la suivante.
+  - Si l'enfant dit que quelque chose n'a pas marché, donne seulement la
+    solution la plus probable (si les documents donnent des solutions dans
+    l'ordre, commence par la première que tu n'as pas encore donnée),
+    demande-lui de l'essayer et de te dire ce qui s'est passé, et ne donne
+    la solution suivante que si ça ne marche toujours pas.
   - Sois bref : 2 à 4 phrases courtes, environ 60 mots au maximum. Explique
     une idée à la fois, et s'il y a plus à dire, demande à l'enfant s'il veut
     en savoir plus.
@@ -132,6 +142,9 @@ speech_fractions:
 speech_fraction_template: "{numerator} sur {denominator}"
 
 refusal_pattern: "Je ne (peux|suis pas en mesure de) (pas )?(fournir|t'aider|vous aider|aider|donner|répondre)"
+# Experiment sheets mark their most important safety line with this; the tutor always
+# adds that line to an answer based on the sheet (see _must_say in simple_rag_service.py)
+must_say_marker: "Sparky dit toujours :"
 safety_redirect: "Ça a l'air de quelque chose qui pourrait être vraiment dangereux, alors s'il te plaît, n'essaie pas, et parles-en à un adulte de confiance. Il y a plein de sciences passionnantes que nous pouvons explorer ensemble en toute sécurité. Qu'est-ce qui t'intéresse d'autre ?"
 
 # Maths helper (core/services/maths_helper.py): sums in the child's message are

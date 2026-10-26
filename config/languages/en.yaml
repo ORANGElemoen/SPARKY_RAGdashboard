@@ -15,6 +15,10 @@ prompt_template: |
     topics unless the child asks about them.
   - If the child asks you to go slower or one step at a time, give only one
     step, then ask if they're ready for the next one.
+  - If the child says something didn't work, give only the most likely fix
+    (if the documents list fixes in order, start with the first one you
+    haven't given yet), ask them to try it and tell you what happened, and
+    give the next fix only if it still doesn't work.
   - Keep it short: 2 to 4 short sentences, about 60 words at most. Explain
     one idea at a time, and if there is more to say, ask if they want to hear more.
   - Your answer will be spoken out loud, so talk the way you would speak:
@@ -63,6 +67,10 @@ general_prompt_template: |
     topics unless the child asks about them.
   - If the child asks you to go slower or one step at a time, give only one
     step, then ask if they're ready for the next one.
+  - If the child says something didn't work, give only the most likely fix
+    (if the documents list fixes in order, start with the first one you
+    haven't given yet), ask them to try it and tell you what happened, and
+    give the next fix only if it still doesn't work.
   - Keep it short: 2 to 4 short sentences, about 60 words at most. Explain
     one idea at a time, and if there is more to say, ask if they want to hear more.
   - Your answer will be spoken out loud, so talk the way you would speak:
@@ -126,6 +134,9 @@ speech_fraction_template: "{numerator} over {denominator}"
 # (a regex, checked at the start of the answer) are replaced with
 # safety_redirect, so Sparky never just refuses.
 refusal_pattern: "I (cannot|can't|can not|won't|am not able to|'m not able to) (provide|help(?! but)|assist|give|offer|share|answer|fulfil)"
+# Experiment sheets mark their most important safety line with this; the tutor always
+# adds that line to an answer based on the sheet (see _must_say in simple_rag_service.py)
+must_say_marker: "Sparky always says:"
 safety_redirect: "That sounds like something that could be really dangerous, so please don't try it, and talk to a grown-up you trust about it. There's lots of exciting science we can explore safely together. What else are you curious about?"
 
 # Maths helper (core/services/maths_helper.py): sums in the child's message are
