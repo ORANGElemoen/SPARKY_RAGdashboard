@@ -1,4 +1,4 @@
-// Voice question: record -> POST /api/v1/voice/query (Accept: application/x-tutor-voice)
+// Voice question: record -> POST /api/v1/voice/query (Accept: application/x-tutor-voice; version=2)
 // -> play each answer sentence as soon as it arrives. Wire format: docs/PROTOCOL.md.
 //
 // The recording goes to LittleFS (8 s = 256 KB is too much RAM next to Wi-Fi), already
@@ -118,7 +118,8 @@ static void playerTask(void*) {
 }
 
 // Receives the answer body (HTTPClient has already removed the chunked encoding):
-// [u32 BE length][metadata JSON] then frame_count x [u32 BE length][one WAV file].
+// [u32 BE length][metadata JSON] then [u32 BE length][one WAV file] per sentence; protocol v2
+// ends with one more JSON block (answer text + sentence count), told apart by not being "RIFF".
 class AnswerSink : public Stream {
  public:
   int framesReceived = 0, framesExpected = -1;
@@ -145,6 +146,29 @@ class AnswerSink : public Stream {
   char* meta = nullptr;
   bool gotMeta = false, firstFrame = true;
 
+  // The metadata block (v1: has answer_text + frame_count; v2: frame_count is null) or the
+  // v2 closing summary (answer_text + frame_count).
+  void finishJson() {
+    if (meta) {
+      meta[need] = 0;
+      JsonDocument filter, doc;
+      filter["transcript"] = true;
+      filter["answer_text"] = true;
+      filter["frame_count"] = true;
+      if (!deserializeJson(doc, meta, need, DeserializationOption::Filter(filter))) {
+        if (doc["transcript"].is<const char*>()) Serial.printf("[ask] heard: \"%s\"\n", (const char*)doc["transcript"]);
+        if (!doc["frame_count"].isNull()) framesExpected = doc["frame_count"];
+        if (doc["answer_text"].is<const char*>())
+          Serial.printf("[ask] answer (%d sentences): %s\n", framesExpected, (const char*)doc["answer_text"]);
+      }
+      free(meta);
+      meta = nullptr;
+    }
+    gotMeta = true;
+    state = LEN;
+    have = 0;
+  }
+
   size_t take(uint8_t* dst, const uint8_t* p, size_t n) {
     size_t k = min((size_t)(need - have), n);
     if (dst) memcpy(dst + have, p, k);
@@ -164,52 +188,39 @@ class AnswerSink : public Stream {
             meta = need <= 32768 ? (char*)malloc(need + 1) : nullptr;   // huge metadata: skip it
             state = META;
           } else {
-            state = need > 44 ? WAVHDR : SKIP;
+            state = WAVHDR;
           }
         }
         return k;
       }
       case META: {
         size_t k = take((uint8_t*)meta, p, n);
-        if (have == need) {
-          if (meta) {
-            meta[need] = 0;
-            JsonDocument filter, doc;
-            filter["transcript"] = true;
-            filter["answer_text"] = true;
-            filter["frame_count"] = true;
-            if (!deserializeJson(doc, meta, need, DeserializationOption::Filter(filter))) {
-              Serial.printf("[ask] heard: \"%s\"\n", (const char*)(doc["transcript"] | ""));
-              framesExpected = doc["frame_count"] | -1;
-              Serial.printf("[ask] answer (%d sentences): %s\n", (int)(doc["frame_count"] | 0),
-                            (const char*)(doc["answer_text"] | ""));
-            }
-            free(meta);
-            meta = nullptr;
-          }
-          gotMeta = true;
-          state = LEN;
-          have = 0;
-        }
+        if (have == need) finishJson();
         return k;
       }
-      case WAVHDR: {
-        uint32_t frameLen = need;
-        need = 44;
+      case WAVHDR: {                             // a sentence's WAV header, or the v2 closing summary
+        uint32_t frameLen = need, head = min(frameLen, (uint32_t)44);
+        need = head;
         size_t k = take(hdr, p, n);
         need = frameLen;                         // keep the frame length for the PCM part
-        if (have == 44) {
-          if (firstFrame) {
-            waitFiller();                        // the "let me think" line finishes first
-            playRate = hdr[24] | hdr[25] << 8 | hdr[26] << 16 | (uint32_t)hdr[27] << 24;
-            firstFrame = false;
-          }
-          receiving = true;
-          need = frameLen - 44;                  // PCM bytes in this frame
-          bytesExpected += need;
-          have = 0;
-          state = PCM;
+        if (have < head) return k;
+        if (frameLen <= 44 || memcmp(hdr, "RIFF", 4) != 0) {
+          meta = frameLen <= 32768 ? (char*)malloc(frameLen + 1) : nullptr;
+          if (meta) memcpy(meta, hdr, have);
+          state = META;
+          if (have == need) finishJson();
+          return k;
         }
+        if (firstFrame) {
+          waitFiller();                          // the "let me think" line finishes first
+          playRate = hdr[24] | hdr[25] << 8 | hdr[26] << 16 | (uint32_t)hdr[27] << 24;
+          firstFrame = false;
+        }
+        receiving = true;
+        need = frameLen - 44;                    // PCM bytes in this frame
+        bytesExpected += need;
+        have = 0;
+        state = PCM;
         return k;
       }
       case PCM: {
@@ -292,7 +303,7 @@ AskResult askQuestion(bool (*buttonHeld)()) {
   HTTPClient http;
   http.begin(settingsServerUrl() + "/api/v1/voice/query");
   http.addHeader("X-Device-Key", settingsDeviceKey());
-  http.addHeader("Accept", "application/x-tutor-voice");
+  http.addHeader("Accept", "application/x-tutor-voice; version=2");   // v2: answer streams as it's written
   http.addHeader("Content-Type", "multipart/form-data; boundary=" BOUNDARY);
   http.setConnectTimeout(5000);
   http.setTimeout(ANSWER_TIMEOUT_MS);

@@ -40,6 +40,10 @@ MAX_AUDIO_SIZE = 10 * 1024 * 1024  # 10MB
 
 HARDWARE_MEDIA_TYPE = "application/x-tutor-voice"
 PROTOCOL_VERSION = 1
+# Version 2 (`Accept: application/x-tutor-voice; version=2`) streams the answer while the AI
+# is still writing it: details first, each sentence's audio as soon as it exists, then a
+# closing summary with the full answer text and the sentence count (docs/PROTOCOL.md).
+STREAMING_PROTOCOL_VERSION = 2
 
 # Caps how many transcribe->generate->synthesize pipelines can run at once.
 # Each one now overlaps properly on the event loop (see the asyncio.to_thread
@@ -112,13 +116,27 @@ async def voice_query(
     JSON+base64 by default, or as the framed binary hardware format if the
     request sends `Accept: application/x-tutor-voice` (see docs/PROTOCOL.md).
     """
-    hardware_format = accept == HARDWARE_MEDIA_TYPE
+    media = [part.strip().lower() for part in (accept or "").split(";")]
+    hardware_format = media[0] == HARDWARE_MEDIA_TYPE
+    streaming = hardware_format and "version=2" in media[1:]
     strings = load_language_strings()
 
     if _voice_semaphore.locked():
         raise HTTPException(
             status_code=503,
             detail="The tutor is busy answering someone else right now - please try again in a moment.",
+        )
+
+    if streaming:
+        audio_bytes = await audio.read()
+        if not audio_bytes:
+            raise HTTPException(status_code=400, detail="Empty audio file")
+        if len(audio_bytes) > MAX_AUDIO_SIZE:
+            raise HTTPException(status_code=400, detail="Audio file too large (max 10MB)")
+        return StreamingResponse(
+            _stream_answer_v2(audio_bytes, voice_service, rag_service, session_id,
+                              device.id if device else None, strings),
+            media_type=HARDWARE_MEDIA_TYPE,
         )
 
     async with _voice_semaphore:
@@ -241,3 +259,52 @@ async def _stream_hardware_response(
             yield pack_frame(wav_bytes)
 
     return StreamingResponse(frame_generator(), media_type=HARDWARE_MEDIA_TYPE)
+
+
+async def _stream_answer_v2(audio_bytes, voice_service, rag_service, session_id, device_id, strings):
+    """Protocol v2 body: [details][sentence audio]...[summary], each sentence spoken as soon as
+    the AI has written it (see docs/PROTOCOL.md). The concurrency cap is held for the whole
+    answer, since transcription, writing and speaking all happen while this body streams."""
+
+    async def speak(text):
+        for sentence in split_sentences(text):
+            yield pack_frame(await asyncio.to_thread(voice_service.synthesize, sentence))
+
+    async with _voice_semaphore:
+        meta = {"protocol_version": STREAMING_PROTOCOL_VERSION, "transcript": "", "confidence": 0.0,
+                "used_general_knowledge": False, "sources": [], "frame_count": None}
+        frames, answer_text, meta_sent = 0, "", False
+        try:
+            transcript = await asyncio.to_thread(voice_service.transcribe, audio_bytes)
+            logger.info(f"Voice transcript: {transcript[:100]}")
+            meta["transcript"] = transcript
+            if len(transcript.strip()) < 3:
+                answer_text = strings["voice_retry_prompt"]
+            else:
+                async for kind, payload in rag_service.answer_query_stream(
+                    transcript, query_type="voice", session_id=session_id, device_id=device_id
+                ):
+                    if kind == "meta":
+                        meta.update(payload)
+                        meta_sent = True
+                        yield pack_frame(pack_metadata(meta))
+                    elif kind == "sentence":
+                        yield pack_frame(await asyncio.to_thread(voice_service.synthesize, payload))
+                        frames += 1
+                    elif "error" in payload:
+                        logger.warning(f"RAG error for voice query: {payload['error']}")
+                        answer_text = strings["voice_error_prompt"] if frames == 0 else answer_text
+                    else:
+                        answer_text = payload["answer"]
+        except Exception as e:
+            logger.error(f"Streaming voice query failed: {e}")
+            if frames == 0:
+                answer_text = strings["voice_error_prompt"]
+        if not meta_sent:
+            yield pack_frame(pack_metadata(meta))
+        if frames == 0 and answer_text:          # retry prompt, or an error before anything was said
+            async for frame in speak(answer_text):
+                frames += 1
+                yield frame
+        yield pack_frame(pack_metadata({"protocol_version": STREAMING_PROTOCOL_VERSION,
+                                        "answer_text": answer_text, "frame_count": frames}))
