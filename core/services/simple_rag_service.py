@@ -72,6 +72,7 @@ DEFAULT_LANGUAGE_STRINGS = {
         "try it, and talk to a grown-up you trust about it. There's lots of exciting "
         "science we can explore safely together. What else are you curious about?"
     ),
+    "must_say_marker": "Sparky always says:",
 }
 
 
@@ -149,6 +150,40 @@ def _soften_refusal(text: str, strings: Dict[str, str]) -> str:
         if pattern and re.match(pattern, text.strip(), re.IGNORECASE):
             return strings["safety_redirect"]
     return text
+
+
+# How much retrieved text the LLM reads per answer (more = slower answers on a small model)
+MAX_CONTEXT_CHARS = 2000
+# A result this close to the best score counts as "about as relevant"
+CLOSE_SIMILARITY = 0.15  # 0.1 let a 0.65 book chunk beat the 0.55 red cabbage sheet
+
+
+def _whole_results_first(results: List[Dict]) -> List[Dict]:
+    """Put results that fit in the context whole (a short experiment sheet, a saved good answer)
+    ahead of long book chunks that would be cut off - if they are about as relevant as the best.
+
+    Otherwise one ~3000-character book chunk that scored slightly higher fills the whole context
+    and the sheet written for exactly that question never reaches the LLM.
+    """
+    if not results:
+        return results
+    best = max(r["similarity"] for r in results)
+
+    def fits(r):
+        return len(r["text"]) <= MAX_CONTEXT_CHARS and r["similarity"] >= best - CLOSE_SIMILARITY
+
+    return sorted(results, key=lambda r: not fits(r))  # stable: score order kept within each group
+
+
+def _must_say(text: str, marker: Optional[str]) -> Optional[str]:
+    """The sentence after the language's must-say marker in a document ("Sparky always says:
+    Never drink the water from your filter!"), or None. The small LLM often drops a sheet's most
+    important safety line from a 60-word answer, so the tutor adds this one itself."""
+    if not marker or marker not in text:
+        return None
+    rest = " ".join(text.split(marker, 1)[1].split())   # PDF text breaks lines anywhere
+    found = re.match(r"(.+?[.!?])(\s|$)", rest)
+    return found.group(1) if found else None
 
 
 # Sentence boundary for spoken answers: end punctuation followed by space, so "3.5" stays whole.
@@ -255,7 +290,7 @@ class SimpleRAGService:
                 )
 
             # 3. Search for relevant documents
-            search_results = await self._search_documents(query)
+            search_results = await self._search_with_history(query, conversation_history)
 
             # 4. Generate AI answer (grounded in documents if any were found,
             # otherwise the tutor falls back to its own general knowledge)
@@ -352,6 +387,19 @@ class SimpleRAGService:
             return False
         return True
 
+    async def _search_with_history(
+        self, query: str, history: Optional[List[Dict[str, str]]]
+    ) -> List[Dict[str, Any]]:
+        """Search for the question; if nothing matches and it's part of a conversation, retry
+        with each earlier question (newest first). A follow-up like "It's not lighting up"
+        matches no document on its own, but "make a lemon battery ... It's not lighting up" does."""
+        results = await self._search_documents(query)
+        for turn in reversed(history or []):
+            if results:
+                break
+            results = await self._search_documents(f"{turn['question_text']} {query}")
+        return results
+
     async def _search_documents(self, query: str) -> List[Dict[str, Any]]:
         """Search for relevant documents"""
         try:
@@ -424,9 +472,10 @@ class SimpleRAGService:
             )
             return {"prompt": prompt, "sources": [], "confidence": 0.0, "used_general_knowledge": True,
                     "temperature": 0.6,  # More creative/exploratory for open-ended teaching
-                    "cacheable": False, "context": ""}
+                    "cacheable": False, "context": "", "must_say": None}
 
         # Prepare context from the actual retrieved document chunks
+        search_results = _whole_results_first(search_results)
         context_parts = []
         sources = []
         for i, result in enumerate(search_results, 1):
@@ -448,9 +497,8 @@ class SimpleRAGService:
             )
 
         context = "\n\n".join(context_parts)
-        max_context_length = 2000  # Truncate context if too long for performance
-        if len(context) > max_context_length:
-            context = context[:max_context_length] + "\n\n" + strings["truncated_notice"]
+        if len(context) > MAX_CONTEXT_CHARS:
+            context = context[:MAX_CONTEXT_CHARS] + "\n\n" + strings["truncated_notice"]
         logger.debug(f"Context for prompt: {context[:800]}...")
 
         prompt = strings["prompt_template"].format(
@@ -463,16 +511,25 @@ class SimpleRAGService:
         # return an answer made for a different conversation, language,
         # grade, prompt wording or model (switching models in the admin
         # dashboard used to keep serving the old model's answers).
+        # The top document's must-say safety line - once per conversation, not on every follow-up
+        must_say = _must_say(search_results[0]["text"], strings.get("must_say_marker"))
+        if must_say and any(must_say.lower() in (turn.get("answer_text") or "").lower()
+                            for turn in conversation_history or []):
+            must_say = None
         return {"prompt": prompt, "sources": sources,
                 "confidence": max(r["similarity"] for r in search_results),
                 "used_general_knowledge": False,
                 "temperature": 0.4,  # Some room for a fun, engaging tone
-                "cacheable": True, "context": context}
+                "cacheable": True, "context": context, "must_say": must_say}
 
     def _finish_answer(self, response: str, prep: Dict[str, Any], strings: Dict[str, str]) -> Dict[str, Any]:
         """Everything after the LLM call: tidy the text, soften refusals, add citations."""
         answer_text = response if response else strings["no_answer_generated"]
-        answer_text = _soften_refusal(_trim_to_complete_sentence(answer_text), strings)
+        trimmed = _trim_to_complete_sentence(answer_text)
+        answer_text = _soften_refusal(trimmed, strings)
+        must_say = prep.get("must_say")
+        if response and must_say and answer_text == trimmed and must_say.lower() not in answer_text.lower():
+            answer_text = f"{answer_text} {must_say}"  # not onto a refusal's safety redirect
         spoken_text = answer_text  # Citations below are for display, not speech
 
         # Add source footer - only when an answer was actually generated,
@@ -568,7 +625,7 @@ class SimpleRAGService:
                 history = await self.interaction_log_repo.get_recent_turns(
                     session_id, limit=self.config.max_conversation_turns
                 )
-            search_results = await self._search_documents(query)
+            search_results = await self._search_with_history(query, history)
             prep = self._prepare_answer(query, search_results, history, strings)
         except Exception as e:
             logger.error(f"Query processing failed: {e}")
@@ -602,7 +659,7 @@ class SimpleRAGService:
                 logger.error(f"Streaming answer failed: {e}")
                 text = " ".join(spoken)  # keep what was already said
             if refused:
-                result = self._finish_answer(strings["safety_redirect"], prep, strings)
+                result = self._finish_answer(strings["safety_redirect"], {**prep, "must_say": None}, strings)
             elif not text and not spoken:
                 result = self._finish_answer("", prep, strings)
             else:

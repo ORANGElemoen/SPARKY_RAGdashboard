@@ -134,3 +134,86 @@ def test_v1_is_unchanged_for_older_firmware():
     blocks = _blocks(r.content)
     meta = json.loads(blocks[0])
     assert meta["protocol_version"] == 1 and meta["frame_count"] == len(blocks) - 1 == len(SENTENCES)
+
+
+# ---------------------------------------------------------------- follow-up questions
+def test_a_follow_up_finds_the_document_through_the_earlier_question():
+    class LemonSheetOnly:
+        """Finds the lemon battery sheet only when 'lemon' is in the search text."""
+        def __init__(self):
+            self.searched = []
+
+        async def search_similar_text(self, query, limit, threshold):
+            self.searched.append(query)
+
+            class Item:
+                id, document_id, text_content = 1, 29, "Lemon battery: turn the LED round or add a lemon."
+                metadata = {"similarity_score": 0.8, "document_name": "Lemon Battery.pdf"}
+
+            class Result:
+                items = [Item()] if "lemon" in query.lower() else []
+            return Result()
+
+    search = LemonSheetOnly()
+    service = rag.SimpleRAGService(search, FakeLLM(ANSWER))
+    history = [{"question_text": "How do I make a lemon battery?", "answer_text": "..."},
+               {"question_text": "What next?", "answer_text": "..."}]
+    found = asyncio.run(service._search_with_history("It's not lighting up", history))
+    assert [r["document_id"] for r in found] == [29]
+    # newest question first, then back to the one that names the experiment
+    assert search.searched == ["It's not lighting up", "What next? It's not lighting up",
+                               "How do I make a lemon battery? It's not lighting up"]
+    # a question that matches on its own searches once, history untouched
+    search.searched.clear()
+    asyncio.run(service._search_with_history("lemon battery please", history))
+    assert search.searched == ["lemon battery please"]
+
+
+def test_a_whole_sheet_goes_ahead_of_a_long_book_chunk_that_scored_a_bit_higher():
+    book = {"text": "b" * 3000, "similarity": 0.710}    # would fill the whole context
+    sheet = {"text": "s" * 1800, "similarity": 0.665}   # fits whole, nearly as relevant
+    weak = {"text": "w" * 500, "similarity": 0.500}     # fits, but much less relevant
+    assert rag._whole_results_first([book, sheet, weak]) == [sheet, book, weak]
+    assert rag._whole_results_first([]) == []
+
+
+# ---------------------------------------------------------------- must-say safety line
+SHEET = ("Bottle Water Filter\nSafety first\nSparky always says: Never drink the water from your\n"
+         "filter - it can still have germs!\nAn adult should cut the bottle.")
+MUST = "Never drink the water from your filter - it can still have germs!"
+
+
+def test_the_must_say_line_is_found_across_pdf_line_breaks():
+    assert rag._must_say(SHEET, "Sparky always says:") == MUST
+    assert rag._must_say("A book page with no marker.", "Sparky always says:") is None
+    assert rag._must_say(SHEET, None) is None
+
+
+class OneSheet:
+    async def search_similar_text(self, query, limit, threshold):
+        class Item:
+            id, document_id, text_content = 1, 30, SHEET
+            metadata = {"similarity_score": 0.8, "document_name": "Water Filter.pdf"}
+
+        class Result:
+            items = [Item()]
+        return Result()
+
+
+def test_the_must_say_line_is_spoken_once_per_conversation():
+    first = stream(rag.SimpleRAGService(OneSheet(), FakeLLM(ANSWER)), "How do I make a water filter?")
+    spoken = [p for k, p, _ in first if k == "sentence"]
+    assert spoken == SENTENCES + [MUST]                   # added after what the AI said
+    assert first[-1][1]["spoken_answer"].endswith(MUST)
+
+    class SaidBefore:                                     # a follow-up in the same conversation
+        async def get_recent_turns(self, session_id, limit):
+            return [{"question_text": "How do I make a water filter?", "answer_text": "... " + MUST}]
+
+        async def log_interaction(self, *args, **kwargs):
+            pass
+
+    async def run():
+        svc = rag.SimpleRAGService(OneSheet(), FakeLLM(ANSWER), interaction_log_repo=SaidBefore())
+        return [p async for k, p in svc.answer_query_stream("It's still muddy", session_id="s") if k == "sentence"]
+    assert asyncio.run(run()) == SENTENCES                # not repeated
