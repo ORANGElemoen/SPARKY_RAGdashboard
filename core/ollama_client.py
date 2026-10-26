@@ -811,6 +811,10 @@ Answer:"""
                                 "prompt": "Hello, respond with just 'OK'",
                                 "options": {"num_predict": 5, "temperature": 0.1},
                                 "stream": False,
+                                # Thinking models would spend all 5 tokens thinking and
+                                # return an empty answer, so the check reported "Unavailable"
+                                "think": False,
+                                "keep_alive": KEEP_ALIVE,
                             },
                             timeout=10,
                         )

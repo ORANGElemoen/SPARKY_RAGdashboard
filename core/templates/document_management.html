@@ -596,12 +596,14 @@
             }
             
             try {
-                const response = await fetch(`/admin/documents/${docId}`, {
-                    method: 'DELETE'
+                // Full delete (file, chunks, embeddings and the in-memory search index);
+                // without the CSRF token the server refused it and nothing happened
+                const response = await fetch(`/api/v1/documents/${docId}`, {
+                    method: 'DELETE',
+                    headers: { 'X-CSRF-Token': await getCsrfToken() }
                 });
-                
-                const result = await response.json();
-                if (result.success) {
+
+                if (response.ok) {
                     showAlert(`Document ${docId} deleted successfully`, 'success');
                     setTimeout(() => location.reload(), 1500);
                 } else {
