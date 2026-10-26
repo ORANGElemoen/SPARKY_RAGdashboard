@@ -225,7 +225,13 @@ void testSampleRate() {
   Serial.println("\n[5] Mic sample rate (M-02): counting samples for 10 s...");
   static int32_t frames[512];
   int32_t pl, pr;
-  micRead(frames, pl, pr);                        // let the bus settle
+  // Empty the DMA backlog first: until a read has to wait for fresh samples, it returns audio that
+  // was already queued, which would count ~7 x 256 extra frames and read ~1% fast.
+  for (int i = 0; i < 64; i++) {
+    uint32_t t = micros();
+    micRead(frames, pl, pr);
+    if (micros() - t > 8000) break;               // this read waited (~16 ms per 256 frames): queue empty
+  }
   uint32_t t0 = micros(), count = 0;
   while (micros() - t0 < 10000000UL) count += micRead(frames, pl, pr);
   float rate = count / ((micros() - t0) / 1e6f);
