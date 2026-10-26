@@ -55,15 +55,18 @@ static void pollCommands() {
   }
 }
 
-void networkReportStatus(float answerSeconds, int stalls, uint32_t stallMs) {
+void networkReportStatus(float answerSeconds, int stalls, uint32_t stallMs, int32_t latencyMs, int complete) {
   if (!WiFi.isConnected()) return;
   JsonDocument doc;
   doc["rssi"] = WiFi.RSSI();
+  doc["uptime_s"] = millis() / 1000;
   if (stalls >= 0) {
     doc["answer_audio_s"] = answerSeconds;
     doc["answer_stalls"] = stalls;
     doc["answer_stall_ms"] = stallMs;
   }
+  if (latencyMs >= 0) doc["answer_latency_ms"] = latencyMs;
+  if (complete >= 0) doc["answer_complete"] = complete == 1;
   String body;
   serializeJson(doc, body);
   HTTPClient http;

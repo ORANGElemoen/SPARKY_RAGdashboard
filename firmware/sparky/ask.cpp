@@ -71,6 +71,7 @@ static StreamBufferHandle_t pcm = nullptr;
 static size_t pcmCapacity = 0;
 static volatile bool receiving = false, answerDone = false, playerDone = true;
 static volatile uint32_t playRate = 22050, stalls = 0, stallMs = 0, playedBytes = 0;
+static volatile uint32_t firstAnswerMs = 0;            // when the first word of the answer played
 
 static void playerTask(void*) {
   int16_t raw[512];
@@ -100,6 +101,7 @@ static void playerTask(void*) {
       continue;
     }
     if (!started) {
+      firstAnswerMs = millis();
       facesShowMood(MOOD_TALKING);
       voiceStreamBegin(playRate);
       started = true;
@@ -119,7 +121,8 @@ static void playerTask(void*) {
 // [u32 BE length][metadata JSON] then frame_count x [u32 BE length][one WAV file].
 class AnswerSink : public Stream {
  public:
-  int framesReceived = 0;
+  int framesReceived = 0, framesExpected = -1;
+  uint32_t bytesExpected = 0;   // PCM bytes the server sent, to check nothing was cut off
 
   int available() override { return 0; }
   int read() override { return -1; }
@@ -177,6 +180,7 @@ class AnswerSink : public Stream {
             filter["frame_count"] = true;
             if (!deserializeJson(doc, meta, need, DeserializationOption::Filter(filter))) {
               Serial.printf("[ask] heard: \"%s\"\n", (const char*)(doc["transcript"] | ""));
+              framesExpected = doc["frame_count"] | -1;
               Serial.printf("[ask] answer (%d sentences): %s\n", (int)(doc["frame_count"] | 0),
                             (const char*)(doc["answer_text"] | ""));
             }
@@ -202,6 +206,7 @@ class AnswerSink : public Stream {
           }
           receiving = true;
           need = frameLen - 44;                  // PCM bytes in this frame
+          bytesExpected += need;
           have = 0;
           state = PCM;
         }
@@ -262,6 +267,7 @@ AskResult askQuestion(bool (*buttonHeld)()) {
 #else
   size_t samples = micRecord(f, MAX_QUESTION_MS, buttonHeld);
 #endif
+  uint32_t releaseMs = millis();                 // end of the child's question (REQ-N-01 starts here)
   f.print("\r\n--" BOUNDARY "--\r\n");
   f.close();
   voiceChirp(900, 500, 90);                      // "blip": got it
@@ -301,6 +307,7 @@ AskResult askQuestion(bool (*buttonHeld)()) {
     stalls = 0;
     stallMs = 0;
     playedBytes = 0;
+    firstAnswerMs = 0;
     xTaskCreatePinnedToCore(playerTask, "player", 4096, nullptr, 3, nullptr, 1);
     AnswerSink sink;
     http.writeToStream(&sink);
@@ -309,9 +316,15 @@ AskResult askQuestion(bool (*buttonHeld)()) {
     while (!playerDone) delay(10);
     if (sink.framesReceived > 0) result = ASK_OK;
     float speech = playedBytes / 2.0f / playRate;
+    int32_t latency = firstAnswerMs ? (int32_t)(firstAnswerMs - releaseMs) : -1;
+    // complete = every sentence the server announced arrived, and every byte of it was played
+    bool complete = sink.framesReceived == sink.framesExpected && playedBytes + 1 >= sink.bytesExpected;
     Serial.printf("[ask] played %d sentences, %.1f s of speech, %u stalls (%u ms), Wi-Fi %d dBm\n",
                   sink.framesReceived, speech, (unsigned)stalls, (unsigned)stallMs, WiFi.RSSI());
-    networkReportStatus(speech, stalls, stallMs);
+    Serial.printf("[ask] first word of the answer %.1f s after letting go; %d/%d sentences, %u/%u bytes: %s\n",
+                  latency / 1000.0f, sink.framesReceived, sink.framesExpected, (unsigned)playedBytes,
+                  (unsigned)sink.bytesExpected, complete ? "COMPLETE" : "CUT OFF");
+    networkReportStatus(speech, stalls, stallMs, latency, complete ? 1 : 0);
   } else {
     Serial.printf("[ask] server said %d: %s\n", code, code > 0 ? http.getString().c_str() : http.errorToString(code).c_str());
   }

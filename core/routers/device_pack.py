@@ -39,6 +39,9 @@ class DeviceStatus(BaseModel):
     answer_audio_s: Optional[float] = Field(None, ge=0, le=600)  # last answer: seconds of speech
     answer_stalls: Optional[int] = Field(None, ge=0)            # times the speaker ran dry
     answer_stall_ms: Optional[int] = Field(None, ge=0)          # total silence from those
+    answer_latency_ms: Optional[int] = Field(None, ge=0, le=600000)   # letting go -> first word (REQ-N-01)
+    answer_complete: Optional[bool] = None                      # every sentence and byte played (M-15)
+    uptime_s: Optional[int] = Field(None, ge=0)                 # drops after a restart (e.g. brownout)
 
 
 @router.get("/pack")
