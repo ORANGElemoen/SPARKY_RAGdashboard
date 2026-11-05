@@ -102,7 +102,7 @@ See [docs/PROJECT_HANDOFF.md](docs/PROJECT_HANDOFF.md) for the current hardware 
 ### Prerequisites
 - Python 3.10+ (developed against 3.14)
 - [Ollama](https://ollama.com/download), with at least one model pulled
-  (e.g. `ollama pull mistral`)
+  (the default is `ollama pull qwen3.5:4b`)
 
 ### 1. Install
 

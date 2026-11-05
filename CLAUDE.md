@@ -19,11 +19,11 @@ tab, `/api/v1/voice/query`) is now the primary feature.
 known rough edges, read [docs/PROJECT_HANDOFF.md](docs/PROJECT_HANDOFF.md) first.**
 This file (CLAUDE.md) is the shorter, ongoing-guidance version.
 
-**Hardware ("Sparky") status**: ESP32 bring-up is underway - WiFi captive
-portal onboarding and the device-auth/network path to this backend are both
-working against real hardware. The physical mic/amp/speaker circuit and
-enclosure are still being assembled; current firmware exercises the pipeline
-with a pre-recorded test file rather than a live recording. See
+**Hardware ("Sparky") status**: the ESP32 works end to end on real hardware:
+WiFi captive portal onboarding, device auth, Studio pack sync (faces and voice
+lines), live mic recording, and streamed answers played through the speaker.
+The server and board currently connect over the laptop's Windows hotspot
+(`192.168.137.1`). See
 `hardware/circuit/` (SKiDL/KiCad) and `hardware/cad/` (enclosure exports) for
 the physical-build artifacts, and `docs/sparky_*.pdf` for the shopping
 list/wiring/build-sequence docs.
@@ -61,7 +61,7 @@ open-source-rag-system/
 ├── deployment/requirements/
 │   ├── simple_requirements.txt    # Core deps
 │   └── voice_requirements.txt     # Optional: faster-whisper, piper-tts
-├── docs/                          # API docs, PROJECT_HANDOFF/PROTOCOL, Sparky hardware PDFs, images/
+├── docs/                          # API docs, PROJECT_HANDOFF/PROTOCOL/NEW_MACHINE, Sparky hardware PDFs, images/
 ├── firmware/sparky/               # ESP32 Arduino sketch: Wi-Fi setup, Studio pack sync, faces, voice lines
 ├── hardware/
 │   ├── circuit/                   # SKiDL script + generated KiCad netlist/ERC files
@@ -133,8 +133,8 @@ POST call anywhere in the frontend, it needs this or it will silently
 
 ### Technology Stack
 - **Backend**: FastAPI (`core/main.py`), dependency injection (`core/di/`)
-- **LLM**: Ollama via `core/ollama_client.py` (default model: `mistral`,
-  configured in `config/llm_config.yaml`)
+- **LLM**: Ollama via `core/ollama_client.py` (default model: `qwen3.5`, which
+  runs `qwen3.5:4b`, configured in `config/llm_config.yaml`)
 - **RAG**: `SimpleRAGService` (`core/services/simple_rag_service.py`) -
   hybrid grounded/general-knowledge answering, language-aware prompts
 - **STT**: `faster-whisper` (local, CPU, model size configurable)
@@ -145,6 +145,11 @@ POST call anywhere in the frontend, it needs this or it will silently
 - **Frontend**: single-page vanilla JS/HTML (`static/index.html`), two tabs
 
 ## 🔧 Common Development Tasks
+
+### Backups
+`data/` is mostly gitignored and this repository is public, so private data is
+backed up separately with `python scripts/backup_sparky.py`. Never commit the
+zip. See [docs/NEW_MACHINE.md](docs/NEW_MACHINE.md) for restoring on a new machine.
 
 ### Running the system
 ```bash

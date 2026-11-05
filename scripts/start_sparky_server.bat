@@ -33,7 +33,12 @@ goto waitollama
 rem Open the browser once the server has had time to start
 start "" /b powershell -NoProfile -WindowStyle Hidden -Command "Start-Sleep 10; Start-Process 'http://127.0.0.1:8001/ui'"
 echo Starting Sparky's server... (close this window to stop it)
-python simple_api.py
+rem Use the project's virtual environment when there is one
+if exist ".venv\Scripts\python.exe" (
+    ".venv\Scripts\python.exe" simple_api.py
+) else (
+    python simple_api.py
+)
 echo.
 echo The server stopped.
 pause
