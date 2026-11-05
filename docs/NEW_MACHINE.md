@@ -60,6 +60,19 @@ different folder on the new machine, answers still work because the text is in t
 database, but downloading an original PDF returns a 404. Restore to
 `C:\Users\chris\SPARKY_RAGdashboard` to avoid this, or upload the PDFs again.
 
+## Reconnect internet access
+
+The ngrok token and dashboard login are not in the backup. They're stored in
+`%LOCALAPPDATA%\ngrok` on each machine. To set them up again:
+
+1. Install ngrok from the Microsoft Store. Windows Defender may block a direct
+   download. `winget install --id 9MVS1J51GMK6 --source msstore`
+2. Run `scripts\setup_ngrok.bat`.
+
+`scripts\start_sparky_server.bat` then opens the tunnel in its own window. Your
+address stays the same because it belongs to your ngrok account, and it's shown
+on the window's "Forwarding" line.
+
 ## Reconnect the board
 
 The board keeps its device key, and restoring the database keeps that key valid.
