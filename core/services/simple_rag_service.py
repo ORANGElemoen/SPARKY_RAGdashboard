@@ -73,6 +73,7 @@ DEFAULT_LANGUAGE_STRINGS = {
         "science we can explore safely together. What else are you curious about?"
     ),
     "must_say_marker": "Sparky always says:",
+    "stt_hotwords": "Sparky grass science experiment battery lemon gravity",
 }
 
 
@@ -184,6 +185,14 @@ def _must_say(text: str, marker: Optional[str]) -> Optional[str]:
     rest = " ".join(text.split(marker, 1)[1].split())   # PDF text breaks lines anywhere
     found = re.match(r"(.+?[.!?])(\s|$)", rest)
     return found.group(1) if found else None
+
+
+def _add_must_say(answer: str, must_say: str) -> str:
+    """Add a safety line before the closing question, so the answer still ends on the question."""
+    sentences = _SENTENCE_RE.split(answer.strip())
+    if sentences[-1].endswith("?"):
+        return " ".join([*sentences[:-1], must_say, sentences[-1]])
+    return f"{answer} {must_say}"
 
 
 # Internal check, never shown to the child, so it stays in English whatever language they speak.
@@ -572,7 +581,7 @@ class SimpleRAGService:
         answer_text = _soften_refusal(trimmed, strings)
         must_say = prep.get("must_say")
         if response and must_say and answer_text == trimmed and must_say.lower() not in answer_text.lower():
-            answer_text = f"{answer_text} {must_say}"  # not onto a refusal's safety redirect
+            answer_text = _add_must_say(answer_text, must_say)  # not onto a refusal's safety redirect
         spoken_text = answer_text  # Citations below are for display, not speech
 
         # Add source footer - only when an answer was actually generated,
@@ -689,6 +698,9 @@ class SimpleRAGService:
                 async for chunk in self._stream_llm(prep, stop):
                     text += chunk
                     finished = [x.strip() for x in _SENTENCE_RE.split(text)[:-1] if x.strip()]
+                    # This might be the closing question, which a safety line has to go before
+                    if prep.get("must_say") and finished and finished[-1].endswith("?"):
+                        finished = finished[:-1]
                     for sentence in finished[len(spoken):]:
                         # A canned refusal shows in the first sentence: stop and redirect instead
                         if not spoken and _soften_refusal(sentence, strings) != sentence:

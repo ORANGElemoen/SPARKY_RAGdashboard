@@ -1,8 +1,13 @@
 #pragma once
 #include <Arduino.h>
 extern volatile bool sparkyIdle;      // main loop: true only when not listening/thinking/talking
+enum WifiState : uint8_t { WIFI_STATE_OK, WIFI_STATE_LOOKING, WIFI_STATE_LOST };
+extern volatile WifiState sparkyWifi;  // network task: what to show while Wi-Fi is down (loop() shows it)
 extern volatile bool packChanged;     // network task: a new pack was installed -> reload faces
 void networkBegin();
+// A secure connection needs ~46 KB of RAM, and there's only room for one next to the answer buffer.
+// Waits for the network task to finish what it's doing (at most a few seconds).
+void networkWaitUntilQuiet();
 // Tells the server how Sparky is doing (shown in Studio): Wi-Fi signal, plus the last answer's
 // seconds of speech and stalls when stalls >= 0.
 // Always sends uptime (a restart, e.g. a brownout, shows as uptime dropping).

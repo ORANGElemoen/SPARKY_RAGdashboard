@@ -72,7 +72,6 @@ function Write-Row([string]$label, [string]$state, [string]$detail) {
 }
 
 Start-Tunnel
-$browserOpened = $false
 $checkedUrl = $null
 $loginCode = 0
 
@@ -83,8 +82,8 @@ while ($true) {
     $ollamaUp = (Get-StatusCode 'http://127.0.0.1:11434/api/tags') -eq 200
     $hotspotUp = [bool](Get-NetIPAddress -IPAddress $HotspotAddress -ErrorAction SilentlyContinue)
     $tunnelUrl = Get-TunnelUrl
-    if ($tunnelUrl -and $tunnelUrl -ne $checkedUrl) {
-        $loginCode = Get-StatusCode "$tunnelUrl/ui"   # counts against ngrok's quota, so only once
+    if ($tunnelUrl -and ($tunnelUrl -ne $checkedUrl -or $loginCode -ne 401)) {
+        $loginCode = Get-StatusCode "$tunnelUrl/ui"   # counts against ngrok's quota, so stop once it's confirmed
         $checkedUrl = $tunnelUrl
     }
     $boardAge = if ($serverUp) { Get-BoardStatus $serverUrl } else { $null }
@@ -95,7 +94,7 @@ while ($true) {
     Write-Host ''
     if ($ollamaUp) { Write-Row 'AI model' 'OK' 'Ollama is running' } else { Write-Row 'AI model' 'WAIT' 'Waiting for Ollama' }
     if ($serverUp) { Write-Row 'Server' 'OK' $serverUrl } else { Write-Row 'Server' 'WAIT' 'Starting, this can take a minute' }
-    if ($hotspotUp) { Write-Row 'Hotspot' 'OK' 'On' } else { Write-Row 'Hotspot' 'OFF' 'Sparky needs it for now: turn on Mobile hotspot, then restart' }
+    if ($hotspotUp) { Write-Row 'Hotspot' 'OK' 'On' } else { Write-Row 'Hotspot' 'OFF' 'Could not start it. Sparky can only use the internet route' }
     if ($null -eq $boardAge) { Write-Row 'Board' 'OFF' 'Not seen yet' }
     elseif ($boardAge -lt 90) { Write-Row 'Board' 'OK' "Connected, seen $boardAge s ago" }
     else { Write-Row 'Board' 'OFF' "Last seen $([int]($boardAge / 60)) min ago" }
@@ -103,16 +102,12 @@ while ($true) {
     if (-not (Test-Path $Policy)) { Write-Row 'Internet' 'OFF' 'Not set up: run scripts\setup_ngrok.bat' }
     elseif (-not $tunnelUrl) { Write-Row 'Internet' 'WAIT' 'Tunnel is not open yet. Press T to retry' }
     elseif ($loginCode -eq 401) { Write-Row 'Internet' 'OK' "$tunnelUrl  (login required)" }
-    else { Write-Row 'Internet' 'FAIL' "$tunnelUrl  answered $loginCode, expected a login request. Press S" }
+    elseif ($loginCode -ge 200 -and $loginCode -lt 400) { Write-Row 'Internet' 'FAIL' "$tunnelUrl  opened without a login! Press S" }
+    else { Write-Row 'Internet' 'WAIT' "$tunnelUrl  checking the login..." }
 
     Write-Host ''
     Write-Host '  O open dashboard   C copy internet address   T retry tunnel   S stop Sparky'
     Write-Host '  Closing this window leaves Sparky running.' -ForegroundColor DarkGray
-
-    if ($serverUp -and -not $browserOpened) {
-        Start-Process "$serverUrl/ui"
-        $browserOpened = $true
-    }
 
     $deadline = (Get-Date).AddSeconds(5)
     while ((Get-Date) -lt $deadline) {

@@ -5,6 +5,7 @@ enum : uint8_t { MOOD_IDLE, MOOD_LISTENING, MOOD_THINKING, MOOD_TALKING, MOOD_HA
                  MOOD_WIFI_CONNECTED, MOOD_WIFI_SETUP, MOOD_WIFI_ERROR, MOOD_COUNT };
 extern const char* const MOOD_NAMES[MOOD_COUNT];
 void facesBegin();
+void facesSleep();                                  // display and LED off, before deep sleep
 bool facesLoad();                                   // re-read /pack/manifest.json; false = using built-ins
 void facesShowMood(uint8_t mood);                  // the animator does the rest (blinks, LED, ...)
 void facesSetLevel(uint8_t loudness);              // 0-255, from the speaker: makes the talking face move

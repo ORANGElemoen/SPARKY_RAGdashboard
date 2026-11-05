@@ -24,6 +24,7 @@ repository is public. `backups/` is gitignored for this reason.
 | `data/studio/`: voice lines and faces | Stock Piper voice: only needed if the Sparky voice is missing |
 | `data/piper_voices/en_US-sparky-medium.onnx`: Sparky's voice | Voice training files: `latest.ckpt`, `reference.wav` etc. stay in `MyDrive/sparky_voice/` |
 | `.env`, if there is one | |
+| `firmware/sparky/local_config.h`: the addresses built into the firmware | |
 
 ## Set up the new machine
 
@@ -80,7 +81,8 @@ The server address will change if the new machine has a different address: hold
 Sparky's button while switching on, then enter the new one on the setup page.
 
 If the board needs flashing, install the ESP32 core and libraries first, then see
-`firmware/sparky/README.md`.
+`firmware/sparky/README.md`. Always use the `PartitionScheme=no_ota` board option shown
+there, because any other layout wipes the voice lines.
 
 ```powershell
 arduino-cli core install esp32:esp32

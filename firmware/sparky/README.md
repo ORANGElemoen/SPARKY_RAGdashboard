@@ -9,11 +9,10 @@ and the test sketch in `../sparky_hw_test/`.
 
 ## Build and upload
 
-Board: **ESP32 Dev Module**, partition scheme **Default 4MB with spiffs**
-(about 1.3 MB of flash for voice lines, and room for program updates over
-Wi-Fi later). Libraries: WiFiManager, ArduinoJson 7, MD_MAX72XX.
-`build_opt.h` drops HTTPS support from HTTPClient (Sparky only uses plain http on the
-local network) - it saves ~90 KB of program space; keep it.
+Board: **ESP32 Dev Module**, partition scheme **No OTA (2MB APP/2MB SPIFFS)**
+(about 1.9 MB of flash for voice lines, and firmware updates are by USB only). Libraries: WiFiManager, ArduinoJson 7, MD_MAX72XX.
+HTTPS is built in for the internet address, and `tls_roots.h` holds the certificates
+it trusts.
 
 From a terminal, using the `arduino-cli` that ships with the Arduino IDE
 (no need to open the IDE):
@@ -21,9 +20,9 @@ From a terminal, using the `arduino-cli` that ships with the Arduino IDE
 ```bash
 CLI="$LOCALAPPDATA/Programs/Arduino IDE/resources/app/lib/backend/resources/arduino-cli.exe"
 "$CLI" lib install WiFiManager ArduinoJson MD_MAX72XX     # once
-"$CLI" compile --fqbn esp32:esp32:esp32 firmware/sparky
+"$CLI" compile --fqbn esp32:esp32:esp32:PartitionScheme=no_ota firmware/sparky
 "$CLI" board list                                          # find the COM port
-"$CLI" upload --fqbn esp32:esp32:esp32 -p COM5 firmware/sparky
+"$CLI" upload --fqbn esp32:esp32:esp32:PartitionScheme=no_ota -p COM5 firmware/sparky
 "$CLI" monitor -p COM5 -c baudrate=115200                  # watch what Sparky is doing
 ```
 
@@ -34,10 +33,24 @@ CLI="$LOCALAPPDATA/Programs/Arduino IDE/resources/app/lib/backend/resources/ardu
 Sparky opens the **"Sparky Setup"** Wi-Fi hotspot (password `sparky123`).
 Connect with a phone, choose the school Wi-Fi, and enter:
 
-- **Server address** - e.g. `http://192.168.1.20:8001` (the PC running `python simple_api.py`)
+- **Local server address** - already filled in for the laptop's hotspot. Change it only if the
+  server is on a different network, e.g. `http://192.168.1.20:8001`
+- **Internet address** - already filled in on builds with a `local_config.h`
 - **Device key** - from the admin **Devices** page (Register device)
 
-Hold Sparky's button while switching on to open the setup page again (new
+Sparky remembers up to 8 networks it has joined and connects to the strongest one in range,
+always preferring a network where the local server answered. If Wi-Fi drops, it shows the
+"looking" face after 5 s, says the Wi-Fi error line after 30 s, and keeps looking.
+The setup page only opens when none of them is around. Networks that need a username or a
+sign-in web page (eduroam, for example) won't work: use one with a plain password, or a phone hotspot.
+
+Quick presses of Sparky's button, since the ESP32's own buttons are inside the case:
+
+- **3 presses:** says the "goodbye" line and sleeps. Any press wakes it. The display and amplifier
+  turn off, but this isn't a true power switch: the board's USB chip and regulator stay powered.
+- **5 presses:** restarts into the setup page, which closes itself after 3 minutes.
+
+Or hold the button while switching on to open the setup page (new
 Wi-Fi, new server or new key). The device key is a password: type it into
 the setup page, never into the code (this repository is public).
 

@@ -40,7 +40,7 @@ TRIGGERS = {
     "wifi_setup": "No Wi-Fi found: Sparky opened its setup hotspot",
     "wifi_error": "When Sparky can't reach the Wi-Fi",
     "server_error": "When the tutor server doesn't answer",
-    "goodbye": "Before going to sleep",
+    "goodbye": "Before going to sleep (3 quick presses of the button)",
     "custom": "Your own use",
     "test_question": "Bench test: sent as the question instead of the mic (firmware test mode)",
 }

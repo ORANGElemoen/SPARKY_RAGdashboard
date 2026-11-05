@@ -57,6 +57,7 @@ def test_language_file_is_complete(path):
         s[key].format(query="q", context="c", conversation_history="", grade_instruction="G")
     s["grade_instruction"].format(grade="3", age=9)
     assert s["safety_redirect"] and s["refusal_pattern"] and s["speech_fractions"]["1/2"]
+    assert s["stt_hotwords"].startswith("Sparky ")
 
 
 def test_history_keeps_sparkys_closing_question():

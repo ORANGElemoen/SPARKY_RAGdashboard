@@ -27,8 +27,7 @@ static size_t fileSize(const String& path) {
 }
 
 static void begin(HTTPClient& http, const String& path) {
-  http.begin(settingsServerUrl() + path);
-  http.addHeader("X-Device-Key", settingsDeviceKey());
+  settingsHttpBegin(http, path);
   http.setTimeout(30000);
 }
 

@@ -156,3 +156,5 @@ maths_note: "MATHE-FAKT (genau ausgerechnet, also vertrau ihm und rechne nicht s
 maths_check_note: "MATHE-CHECK (genau ausgerechnet): Die Antwort des Kindes ist {child}; die richtige Antwort auf {expr} ist {answer}. Das Kind hat {verdict}. Sag es ihm freundlich und hilf ihm zu verstehen, warum."
 maths_correct: "recht"
 maths_incorrect: "noch nicht recht"
+# Words the speech recogniser should expect: Sparky's name and common science words
+stt_hotwords: "Sparky Gras Wissenschaft Experiment Batterie Zitrone Schwerkraft"

@@ -9,6 +9,8 @@
 
 volatile bool sparkyIdle = true;
 volatile bool packChanged = false;
+volatile WifiState sparkyWifi = WIFI_STATE_OK;
+static volatile bool networkBusy = false;
 static char previewRows[8][33];
 static uint16_t previewSeconds = 0;
 static volatile bool previewReady = false;
@@ -25,10 +27,11 @@ bool networkTakePreview(char rows[8][33], uint16_t* seconds) {
 }
 
 static void pollCommands() {
+  // Over the internet, a held-open request would keep a secure connection's RAM from the next question
+  int wait = settingsOnInternet() ? 0 : LONG_POLL_SECONDS;
   HTTPClient http;
-  http.begin(settingsServerUrl() + "/api/v1/device/commands?wait=" + String(LONG_POLL_SECONDS));
-  http.addHeader("X-Device-Key", settingsDeviceKey());
-  http.setTimeout((LONG_POLL_SECONDS + 5) * 1000);
+  settingsHttpBegin(http, "/api/v1/device/commands?wait=" + String(wait));
+  http.setTimeout((wait + 5) * 1000);
   int code = http.GET();
   String body = code == 200 ? http.getString() : String();
   http.end();
@@ -51,6 +54,7 @@ static void pollCommands() {
     }
   } else if (code != 204) {
     Serial.printf("[net] commands: %d\n", code);
+    settingsChooseServer();                        // maybe the other address works
     vTaskDelay(pdMS_TO_TICKS(5000));               // server unreachable or key revoked - back off
   }
 }
@@ -70,19 +74,36 @@ void networkReportStatus(float answerSeconds, int stalls, uint32_t stallMs, int3
   String body;
   serializeJson(doc, body);
   HTTPClient http;
-  http.begin(settingsServerUrl() + "/api/v1/device/status");
-  http.addHeader("X-Device-Key", settingsDeviceKey());
+  settingsHttpBegin(http, "/api/v1/device/status");
   http.addHeader("Content-Type", "application/json");
   http.setTimeout(5000);
   http.POST(body);
   http.end();
 }
 
+// Wi-Fi dropped: a short blip reconnects by itself, then look for any remembered network.
+static void watchWifi() {
+  static uint32_t droppedAt = 0;
+  if (WiFi.isConnected()) {
+    droppedAt = 0;
+    sparkyWifi = WIFI_STATE_OK;
+    return;
+  }
+  if (!droppedAt) droppedAt = millis();
+  if (!sparkyIdle || millis() - droppedAt < WIFI_GRACE_MS) return;
+  if (sparkyWifi == WIFI_STATE_OK) sparkyWifi = WIFI_STATE_LOOKING;
+  if (settingsRejoinWifi()) return;                // the check above clears the state next time round
+  if (millis() - droppedAt > WIFI_GIVE_UP_MS) sparkyWifi = WIFI_STATE_LOST;
+}
+
 static void networkTask(void*) {
   uint32_t lastSync = 0, lastStatus = 0;
   bool firstSync = true;
   for (;;) {
+    watchWifi();
     if (WiFi.isConnected() && sparkyIdle) {
+      networkBusy = true;
+      if (settingsOnInternet()) settingsChooseServer();   // back to the hotspot as soon as it's reachable
       if (firstSync || millis() - lastSync > SYNC_EVERY_MS) {
         if (packSync()) packChanged = true;
         lastSync = millis();
@@ -93,10 +114,19 @@ static void networkTask(void*) {
         lastStatus = millis();
       }
       pollCommands();
+      networkBusy = false;
+      if (settingsOnInternet()) {                  // the pause the server's long-poll gives on the hotspot
+        for (int i = 0; i < LONG_POLL_SECONDS && sparkyIdle; i++) vTaskDelay(pdMS_TO_TICKS(1000));
+      }
     } else {
       vTaskDelay(pdMS_TO_TICKS(1000));
     }
   }
+}
+
+void networkWaitUntilQuiet() {
+  uint32_t started = millis();
+  while (settingsOnInternet() && networkBusy && millis() - started < 8000) delay(20);
 }
 
 void networkBegin() { xTaskCreatePinnedToCore(networkTask, "network", 12288, nullptr, 1, nullptr, 0); }
