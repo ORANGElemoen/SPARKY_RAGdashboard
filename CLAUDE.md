@@ -146,6 +146,14 @@ POST call anywhere in the frontend, it needs this or it will silently
 
 ## 🔧 Common Development Tasks
 
+### Network routes
+`scripts/start_sparky_server.bat` binds the server to the Windows hotspot
+(`192.168.137.1`), or to `127.0.0.1` when the hotspot is off. It opens an ngrok
+tunnel with a basic-auth login in front of every page. The admin pages have no
+login of their own, so never expose the server without that policy. The token and
+login live in `%LOCALAPPDATA%\ngrok`, never in this public repository. The firmware
+has no HTTPS yet, so the board can only use the hotspot route.
+
 ### Backups
 `data/` is mostly gitignored and this repository is public, so private data is
 backed up separately with `python scripts/backup_sparky.py`. Never commit the
