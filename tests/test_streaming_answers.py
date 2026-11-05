@@ -284,6 +284,39 @@ class OneSheet:
         return Result()
 
 
+SAFETY = "Never connect it to a wall socket."
+
+
+@pytest.mark.parametrize("answer, expected", [
+    ("Roll the lemon. Which leg is longer?", f"Roll the lemon. {SAFETY} Which leg is longer?"),
+    ("Which leg is longer?", f"{SAFETY} Which leg is longer?"),
+    ("Roll the lemon. Push in a nail.", f"Roll the lemon. Push in a nail. {SAFETY}"),
+    ("Is it ready? Now roll the lemon.", f"Is it ready? Now roll the lemon. {SAFETY}"),
+])
+def test_the_must_say_line_goes_before_the_closing_question(answer, expected):
+    assert rag._add_must_say(answer, SAFETY) == expected
+
+
+def test_a_streamed_answer_speaks_the_must_say_line_before_the_closing_question():
+    class SafetySheet:
+        async def search_similar_text(self, query, limit, threshold):
+            class Item:
+                id, document_id = 1, 3
+                text_content = f"Lemon battery. Sparky always says: {SAFETY}\nYou need lemons."
+                metadata = {"similarity_score": 0.8, "document_name": "Lemon Battery.pdf"}
+
+            class Result:
+                items = [Item()]
+            return Result()
+
+    async def run():
+        service = rag.SimpleRAGService(SafetySheet(), FakeLLM(["Roll the lemon. ", "Is it juicy yet? ", ]))
+        return [p async for k, p in service.answer_query_stream("lemon battery") if k == "sentence"]
+
+    spoken = asyncio.run(run())
+    assert spoken == ["Roll the lemon.", SAFETY, "Is it juicy yet?"]
+
+
 def test_the_must_say_line_is_spoken_once_per_conversation():
     first = stream(rag.SimpleRAGService(OneSheet(), FakeLLM(ANSWER)), "How do I make a water filter?")
     spoken = [p for k, p, _ in first if k == "sentence"]
