@@ -155,3 +155,5 @@ maths_note: "FAIT MATHÉMATIQUE (calculé exactement, fais-lui confiance et ne r
 maths_check_note: "VÉRIFICATION (calculée exactement) : la réponse de l'enfant est {child} ; la bonne réponse à {expr} est {answer}. L'enfant {verdict}. Dis-le-lui gentiment et aide-le à comprendre pourquoi."
 maths_correct: "a raison"
 maths_incorrect: "n'a pas encore la bonne réponse"
+# Words the speech recogniser should expect: Sparky's name and common science words
+stt_hotwords: "Sparky herbe science expérience batterie citron gravité"

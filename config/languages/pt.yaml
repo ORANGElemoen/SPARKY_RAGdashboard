@@ -146,3 +146,5 @@ maths_note: "FATO DE MATEMÁTICA (calculado com exatidão, confie nele e não re
 maths_check_note: "VERIFICAÇÃO (calculada com exatidão): a resposta da criança é {child}; a resposta certa para {expr} é {answer}. A criança {verdict}. Diga isso com carinho e ajude-a a entender porquê."
 maths_correct: "acertou"
 maths_incorrect: "ainda não acertou"
+# Words the speech recogniser should expect: Sparky's name and common science words
+stt_hotwords: "Sparky relva ciência experiência bateria limão gravidade"

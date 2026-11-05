@@ -163,3 +163,5 @@ maths_words:
   operators: {plus: "+", minus: "-", times: "*"}
   operator_phrases: {"divided by": "/", "multiplied by": "*", "take away": "-"}
   joiners: [and]
+# Words the speech recogniser should expect: Sparky's name and common science words
+stt_hotwords: "Sparky grass science experiment battery lemon gravity"

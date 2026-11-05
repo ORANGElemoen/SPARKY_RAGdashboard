@@ -144,9 +144,17 @@ class VoiceService:
 
     def transcribe(self, audio_bytes: bytes) -> str:
         """Transcribe spoken audio (any ffmpeg/PyAV-readable format) to text"""
+        from .simple_rag_service import load_language_strings
+
         model = _get_whisper_model()
+        # The filter skips silence and noise. Without it the recogniser invents words there,
+        # and the hint words make that much worse ("battery battery battery"), so keep them together.
         segments, _info = model.transcribe(
-            io.BytesIO(audio_bytes), language=_get_active_language()
+            io.BytesIO(audio_bytes),
+            language=_get_active_language(),
+            vad_filter=True,
+            vad_parameters={"min_silence_duration_ms": 500},
+            hotwords=load_language_strings().get("stt_hotwords"),
         )
         return " ".join(segment.text.strip() for segment in segments).strip()
 
