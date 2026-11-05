@@ -50,7 +50,10 @@ while ($true) {
 $credential = ("{0}:{1}" -f $user, $password).Replace("'", "''")
 $policy = @"
 on_http_request:
-  - actions:
+  # Sparky can't type a password: these paths check its device key instead
+  - expressions:
+      - "!req.url.path.startsWith('/api/v1/device/') && req.url.path != '/api/v1/voice/query'"
+    actions:
       - type: basic-auth
         config:
           realm: Sparky
