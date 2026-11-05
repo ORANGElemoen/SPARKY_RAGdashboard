@@ -186,6 +186,18 @@ def _must_say(text: str, marker: Optional[str]) -> Optional[str]:
     return found.group(1) if found else None
 
 
+# Internal check, never shown to the child, so it stays in English whatever language they speak.
+FOLLOW_UP_CHECK_PROMPT = """A child is talking to a science tutor. Decide if the child's new message continues the same topic or starts a different one.
+
+Tutor was asked: {question}
+Tutor answered: {answer}
+Child's new message: {message}
+
+Reply SAME if the message only makes sense with the earlier conversation, or is about the same activity (for example asking for help, the next step, a repeat, or why it happened).
+Reply NEW if it asks about something else, even a science topic.
+Reply with one word: SAME or NEW."""
+
+
 # Sentence boundary for spoken answers: end punctuation followed by space, so "3.5" stays whole.
 _SENTENCE_RE = re.compile(r"(?<=[.!?])\s+")
 
@@ -231,6 +243,11 @@ class RAGConfig:
         # prior turns from the same session as extra prompt context
         self.max_conversation_turns = int(
             os.getenv("RAG_MAX_CONVERSATION_TURNS", "3")
+        )
+        # A board keeps one session for life, so a turn this old is a different conversation,
+        # maybe with a different child. Keeping it also let the model repeat an old mistake.
+        self.max_conversation_minutes = int(
+            os.getenv("RAG_MAX_CONVERSATION_MINUTES", "30")
         )
 
         logger.info(
@@ -286,7 +303,8 @@ class SimpleRAGService:
             conversation_history = []
             if session_id and self.interaction_log_repo:
                 conversation_history = await self.interaction_log_repo.get_recent_turns(
-                    session_id, limit=self.config.max_conversation_turns
+                    session_id, limit=self.config.max_conversation_turns,
+                    max_age_minutes=self.config.max_conversation_minutes,
                 )
 
             # 3. Search for relevant documents
@@ -394,11 +412,36 @@ class SimpleRAGService:
         with each earlier question (newest first). A follow-up like "It's not lighting up"
         matches no document on its own, but "make a lemon battery ... It's not lighting up" does."""
         results = await self._search_documents(query)
-        for turn in reversed(history or []):
+        if results or not history or not await self._is_follow_up(query, history[-1]):
+            return results
+        for turn in reversed(history):
+            results = await self._search_documents(f"{turn['question_text']} {query}")
             if results:
                 break
-            results = await self._search_documents(f"{turn['question_text']} {query}")
         return results
+
+    async def _is_follow_up(self, query: str, last_turn: Dict[str, str]) -> bool:
+        """Ask the model whether this message continues the last turn. Without this check, adding
+        the earlier question to the search makes any new question ("Why is the sky blue?") match
+        the earlier question's document. Similarity scores can't tell the two apart: a vague
+        "Why does that happen?" scores about the same as an unrelated "What do lions eat?"."""
+        sources_marker = f"\n\n{load_language_strings()['sources_label']}:"
+        prompt = FOLLOW_UP_CHECK_PROMPT.format(
+            question=last_turn["question_text"],
+            answer=(last_turn.get("answer_text") or "").split(sources_marker)[0],
+            message=query,
+        )
+        try:
+            reply = await asyncio.to_thread(
+                self.llm_client.generate_answer, query=prompt, context="", max_tokens=6,
+                temperature=0.0, max_retries=1, is_complete_prompt=True,
+            )
+        except Exception as e:
+            logger.warning(f"Follow-up check failed, treating the message as a new question: {e}")
+            return False
+        # On doubt, answer from general knowledge with the conversation in the prompt: that's
+        # better than a wrong document steering the answer and being cited as its source.
+        return (reply or "").strip().upper().startswith("SAME")
 
     async def _search_documents(self, query: str) -> List[Dict[str, Any]]:
         """Search for relevant documents"""
@@ -623,7 +666,8 @@ class SimpleRAGService:
             history = []
             if session_id and self.interaction_log_repo:
                 history = await self.interaction_log_repo.get_recent_turns(
-                    session_id, limit=self.config.max_conversation_turns
+                    session_id, limit=self.config.max_conversation_turns,
+                    max_age_minutes=self.config.max_conversation_minutes,
                 )
             search_results = await self._search_with_history(query, history)
             prep = self._prepare_answer(query, search_results, history, strings)

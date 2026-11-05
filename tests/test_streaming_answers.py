@@ -7,6 +7,7 @@ import struct
 import time
 import wave
 
+import pytest
 from fastapi import FastAPI
 from fastapi.testclient import TestClient
 
@@ -137,25 +138,39 @@ def test_v1_is_unchanged_for_older_firmware():
 
 
 # ---------------------------------------------------------------- follow-up questions
+class LemonSheetOnly:
+    """Finds the lemon battery sheet only when 'lemon' is in the search text."""
+    def __init__(self):
+        self.searched = []
+
+    async def search_similar_text(self, query, limit, threshold):
+        self.searched.append(query)
+
+        class Item:
+            id, document_id, text_content = 1, 29, "Lemon battery: turn the LED round or add a lemon."
+            metadata = {"similarity_score": 0.8, "document_name": "Lemon Battery.pdf"}
+
+        class Result:
+            items = [Item()] if "lemon" in query.lower() else []
+        return Result()
+
+
+class FollowUpCheck:
+    """Stands in for the model's SAME/NEW reply, and records what it was asked."""
+    def __init__(self, reply):
+        self.reply = reply
+        self.prompts = []
+
+    def generate_answer(self, query, **kwargs):
+        self.prompts.append(query)
+        if isinstance(self.reply, Exception):
+            raise self.reply
+        return self.reply
+
+
 def test_a_follow_up_finds_the_document_through_the_earlier_question():
-    class LemonSheetOnly:
-        """Finds the lemon battery sheet only when 'lemon' is in the search text."""
-        def __init__(self):
-            self.searched = []
-
-        async def search_similar_text(self, query, limit, threshold):
-            self.searched.append(query)
-
-            class Item:
-                id, document_id, text_content = 1, 29, "Lemon battery: turn the LED round or add a lemon."
-                metadata = {"similarity_score": 0.8, "document_name": "Lemon Battery.pdf"}
-
-            class Result:
-                items = [Item()] if "lemon" in query.lower() else []
-            return Result()
-
     search = LemonSheetOnly()
-    service = rag.SimpleRAGService(search, FakeLLM(ANSWER))
+    service = rag.SimpleRAGService(search, FollowUpCheck("SAME"))
     history = [{"question_text": "How do I make a lemon battery?", "answer_text": "..."},
                {"question_text": "What next?", "answer_text": "..."}]
     found = asyncio.run(service._search_with_history("It's not lighting up", history))
@@ -167,6 +182,36 @@ def test_a_follow_up_finds_the_document_through_the_earlier_question():
     search.searched.clear()
     asyncio.run(service._search_with_history("lemon battery please", history))
     assert search.searched == ["lemon battery please"]
+    assert len(service.llm_client.prompts) == 1  # and doesn't need the follow-up check
+
+
+LEMON_TURN = {"question_text": "How do I make a lemon battery?",
+              "answer_text": "Use a coin and a nail.\n\nSources:\n[Source 1] Document 3 - /x"}
+
+
+@pytest.mark.parametrize("reply", ["NEW", "NEW.", "", None, RuntimeError("Ollama stopped")])
+def test_a_new_question_does_not_borrow_the_earlier_document(reply):
+    search = LemonSheetOnly()
+    service = rag.SimpleRAGService(search, FollowUpCheck(reply))
+    assert asyncio.run(service._search_with_history("Why is the sky blue?", [LEMON_TURN])) == []
+    assert search.searched == ["Why is the sky blue?"]
+
+
+def test_the_follow_up_check_sees_the_answer_without_its_source_list():
+    check = FollowUpCheck("same")
+    service = rag.SimpleRAGService(LemonSheetOnly(), check)
+    found = asyncio.run(service._search_with_history("It's not lighting up", [LEMON_TURN]))
+    assert [r["document_id"] for r in found] == [29]
+    assert "Use a coin and a nail." in check.prompts[0]
+    assert "It's not lighting up" in check.prompts[0]
+    assert "Sources" not in check.prompts[0]
+
+
+def test_a_first_question_needs_no_follow_up_check():
+    check = FollowUpCheck("SAME")
+    service = rag.SimpleRAGService(LemonSheetOnly(), check)
+    assert asyncio.run(service._search_with_history("Why is the sky blue?", [])) == []
+    assert check.prompts == []
 
 
 def test_a_whole_sheet_goes_ahead_of_a_long_book_chunk_that_scored_a_bit_higher():
@@ -207,7 +252,7 @@ def test_the_must_say_line_is_spoken_once_per_conversation():
     assert first[-1][1]["spoken_answer"].endswith(MUST)
 
     class SaidBefore:                                     # a follow-up in the same conversation
-        async def get_recent_turns(self, session_id, limit):
+        async def get_recent_turns(self, session_id, limit, max_age_minutes=None):
             return [{"question_text": "How do I make a water filter?", "answer_text": "... " + MUST}]
 
         async def log_interaction(self, *args, **kwargs):
