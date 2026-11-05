@@ -8,6 +8,8 @@
 
 # Speech-to-text (runs fully offline once the model is downloaded)
 faster-whisper>=1.0.0,<2.0.0
+# faster-whisper 1.2.1 calls av.open(metadata_errors=...), which PyAV 19 rejects
+av<19
 
 # Text-to-speech (runs fully offline, small ONNX voice models)
 piper-tts>=1.2.0,<2.0.0
