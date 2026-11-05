@@ -121,24 +121,27 @@ class InteractionLogRepository(SQLiteRepository):
             logger.warning(f"Interaction logging failed (non-fatal): {e}")
 
     async def get_recent_turns(
-        self, session_id: str, limit: int = 4
+        self, session_id: str, limit: int = 4, max_age_minutes: Optional[int] = None
     ) -> List[Dict[str, str]]:
         """Most recent turns for a session, oldest first (for prompt context).
 
         Only question_text/answer_text are returned - this is conversation
-        memory, not a review export, so it stays minimal.
+        memory, not a review export, so it stays minimal. With max_age_minutes,
+        older turns are left out: they belong to an earlier conversation.
         """
+        age_filter = "AND timestamp >= datetime('now', ?)" if max_age_minutes else ""
+        age_param = (f"-{int(max_age_minutes)} minutes",) if max_age_minutes else ()
         try:
             with self.get_connection() as conn:
                 cursor = conn.execute(
-                    """
+                    f"""
                     SELECT question_text, answer_text
                     FROM interaction_log
-                    WHERE session_id = ?
+                    WHERE session_id = ? {age_filter}
                     ORDER BY timestamp DESC
                     LIMIT ?
                     """,
-                    (session_id, limit),
+                    (session_id, *age_param, limit),
                 )
                 turns = [dict(row) for row in cursor.fetchall()]
                 turns.reverse()

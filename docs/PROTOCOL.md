@@ -132,6 +132,10 @@ on the server).
 
 ## Sessions
 
+Conversation memory only covers the last 30 minutes of a session
+(`RAG_MAX_CONVERSATION_MINUTES`). A device keeps one `session_id` for life, so
+older turns count as a finished conversation.
+
 `session_id` scopes conversation memory (follow-up questions like "how does
 that work?") to one device's own conversation — **never shared across
 devices.** Generate a UUID once per device (or per "conversation," if the

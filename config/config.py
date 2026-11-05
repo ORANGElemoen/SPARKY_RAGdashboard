@@ -19,7 +19,7 @@ class Config:
     
     # Ollama configuration
     OLLAMA_EXECUTABLE = os.getenv('OLLAMA_EXECUTABLE', 'ollama')
-    OLLAMA_HOST = os.getenv('OLLAMA_HOST', 'http://localhost:11434')
+    OLLAMA_HOST = os.getenv('OLLAMA_HOST', 'http://127.0.0.1:11434')
     
     # API configuration
     API_HOST = os.getenv('API_HOST', '0.0.0.0')
