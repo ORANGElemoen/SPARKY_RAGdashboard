@@ -218,3 +218,6 @@ data/studio/
 data/fake_sparky/
 firmware/sparky_hw_test/voice_sample.h
 firmware/sparky/local_config.h
+
+# Sparky backups: private data (question log, uploads). This repository is public.
+backups/
