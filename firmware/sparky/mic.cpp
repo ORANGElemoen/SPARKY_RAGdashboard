@@ -25,7 +25,18 @@ void micBegin() {
   i2s_stop(I2S_NUM_0);                             // only clock the mic while recording
 }
 
-size_t micRecord(File& out, uint32_t maxMs, bool (*keepGoing)()) {
+// G.711 mu-law: half the upload for the slow internet route, and speech recognition copes fine.
+static inline uint8_t mulawEncode(int16_t sample) {
+  int s = sample, sign = s < 0 ? 0x80 : 0;
+  if (sign) s = -s;
+  if (s > 32635) s = 32635;
+  s += 0x84;
+  int exponent = 7;
+  for (int mask = 0x4000; !(s & mask) && exponent > 0; mask >>= 1) exponent--;
+  return ~(sign | exponent << 4 | ((s >> (exponent + 3)) & 0x0F));
+}
+
+size_t micRecord(File& out, uint32_t maxMs, bool (*keepGoing)(), bool mulaw) {
   static int32_t frames[512];                      // 256 stereo frames
   static int16_t pcm[256];
   size_t got, samples = 0;
@@ -44,7 +55,13 @@ size_t micRecord(File& out, uint32_t maxMs, bool (*keepGoing)()) {
     i2s_read(I2S_NUM_0, frames, sizeof(frames), &got, portMAX_DELAY);
     size_t n = got / 8;
     for (size_t j = 0; j < n; j++) pcm[j] = constrain(frames[2 * j + slot] >> MIC_SHIFT, -32768, 32767);
-    out.write((const uint8_t*)pcm, n * 2);
+    if (mulaw) {
+      static uint8_t coded[256];
+      for (size_t j = 0; j < n; j++) coded[j] = mulawEncode(pcm[j]);
+      out.write(coded, n);
+    } else {
+      out.write((const uint8_t*)pcm, n * 2);
+    }
     samples += n;
   }
   i2s_stop(I2S_NUM_0);

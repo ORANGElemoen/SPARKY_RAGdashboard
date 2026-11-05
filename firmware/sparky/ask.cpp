@@ -53,12 +53,13 @@ static size_t testQuestion(File& out, bool (*buttonHeld)()) {
 }
 #endif
 
-static void wavHeader(uint8_t h[44], uint32_t samples) {
-  const uint32_t rate = 16000, dataBytes = samples * 2;
+static void wavHeader(uint8_t h[44], uint32_t samples, bool mulaw) {
+  const uint32_t rate = 16000, sampleBytes = mulaw ? 1 : 2, dataBytes = samples * sampleBytes;
   auto le32 = [&](int at, uint32_t v) { for (int i = 0; i < 4; i++) h[at + i] = v >> (8 * i); };
   auto le16 = [&](int at, uint16_t v) { h[at] = v; h[at + 1] = v >> 8; };
   memcpy(h, "RIFF", 4); le32(4, 36 + dataBytes); memcpy(h + 8, "WAVEfmt ", 8);
-  le32(16, 16); le16(20, 1); le16(22, 1); le32(24, rate); le32(28, rate * 2); le16(32, 2); le16(34, 16);
+  le32(16, 16); le16(20, mulaw ? 7 : 1); le16(22, 1); le32(24, rate); le32(28, rate * sampleBytes);
+  le16(32, sampleBytes); le16(34, sampleBytes * 8);
   memcpy(h + 36, "data", 4); le32(40, dataBytes);
 }
 
@@ -117,6 +118,13 @@ static void playerTask(void*) {
   vTaskDelete(nullptr);
 }
 
+// G.711 mu-law: one byte of compressed audio back to a 16-bit sample.
+static inline int16_t mulawDecode(uint8_t byte) {
+  uint8_t u = ~byte;
+  int t = (((u & 0x0F) << 3) + 0x84) << ((u & 0x70) >> 4);
+  return (u & 0x80) ? (0x84 - t) : (t - 0x84);
+}
+
 // Receives the answer body (HTTPClient has already removed the chunked encoding):
 // [u32 BE length][metadata JSON] then [u32 BE length][one WAV file] per sentence; protocol v2
 // ends with one more JSON block (answer text + sentence count), told apart by not being "RIFF".
@@ -144,7 +152,7 @@ class AnswerSink : public Stream {
   uint8_t lenBuf[4], hdr[44];
   uint32_t need = 0, have = 0;
   char* meta = nullptr;
-  bool gotMeta = false, firstFrame = true;
+  bool gotMeta = false, firstFrame = true, mulaw = false;
 
   // The metadata block (v1: has answer_text + frame_count; v2: frame_count is null) or the
   // v2 closing summary (answer_text + frame_count).
@@ -217,15 +225,26 @@ class AnswerSink : public Stream {
           firstFrame = false;
         }
         receiving = true;
-        need = frameLen - 44;                    // PCM bytes in this frame
-        bytesExpected += need;
+        mulaw = hdr[20] == 7;                    // format tag: compressed audio (docs/PROTOCOL.md)
+        need = frameLen - 44;                    // audio bytes in this frame
+        bytesExpected += mulaw ? need * 2 : need;   // what the player will play
         have = 0;
         state = PCM;
         return k;
       }
       case PCM: {
         size_t k = min((size_t)(need - have), n);
-        xStreamBufferSend(pcm, p, k, portMAX_DELAY);   // blocks while the buffer is full
+        if (mulaw) {
+          int16_t decoded[128];
+          for (size_t done = 0; done < k;) {
+            size_t part = min(k - done, sizeof(decoded) / sizeof(decoded[0]));
+            for (size_t i = 0; i < part; i++) decoded[i] = mulawDecode(p[done + i]);
+            xStreamBufferSend(pcm, decoded, part * 2, portMAX_DELAY);
+            done += part;
+          }
+        } else {
+          xStreamBufferSend(pcm, p, k, portMAX_DELAY);   // blocks while the buffer is full
+        }
         have += k;
         if (have == need) {
           receiving = false;
@@ -247,18 +266,32 @@ class AnswerSink : public Stream {
 
 static bool ensureBuffer() {
   if (pcm) return true;
-  for (size_t size : {(size_t)PCM_BUFFER_BYTES, (size_t)PCM_BUFFER_BYTES / 2}) {   // smaller if RAM is short
-    pcm = xStreamBufferCreate(size, 1);
-    if (pcm) { pcmCapacity = size; Serial.printf("[ask] answer buffer %u KB\n", (unsigned)(size / 1024)); return true; }
-  }
-  Serial.println("[ask] no RAM for the answer buffer");
-  return false;
+  pcm = xStreamBufferCreate(PCM_BUFFER_BYTES, 1);
+  if (pcm) pcmCapacity = PCM_BUFFER_BYTES;
+  else Serial.println("[ask] no RAM for the answer buffer");
+  return pcm != nullptr;
+}
+
+static int sendQuestion(HTTPClient& http) {
+  settingsHttpBegin(http, "/api/v1/voice/query");
+  // Over the internet the board receives about 22 KB/s, and the full-quality voice needs 44
+  http.addHeader("Accept", settingsOnInternet() ? "application/x-tutor-voice; version=2; codec=mulaw"
+                                                 : "application/x-tutor-voice; version=2");   // v2: answer streams as it's written
+  http.addHeader("Content-Type", "multipart/form-data; boundary=" BOUNDARY);
+  http.setConnectTimeout(5000);
+  http.setTimeout(ANSWER_TIMEOUT_MS);
+  File body = LittleFS.open(BODY_PATH, "r");
+  int code = http.sendRequest("POST", &body, body.size());
+  body.close();
+  return code;
 }
 
 AskResult askQuestion(bool (*buttonHeld)()) {
   if (!WiFi.isConnected()) {
+    uint32_t pressed = millis();
     while (buttonHeld()) delay(10);
-    return ASK_NO_WIFI;
+    // A quick tap still counts towards the five that open setup: that's when setup is needed most
+    return millis() - pressed < MIN_QUESTION_MS ? ASK_TOO_SHORT : ASK_NO_WIFI;
   }
 
   // 1. record, already wrapped in the multipart body
@@ -274,9 +307,11 @@ AskResult askQuestion(bool (*buttonHeld)()) {
   f.print(head);
   f.write(wav, 44);                              // placeholder, sizes known after recording
 #if SPARKY_TEST_QUESTION
+  const bool compress = false;                   // the test question is stored uncompressed
   size_t samples = testQuestion(f, buttonHeld);
 #else
-  size_t samples = micRecord(f, MAX_QUESTION_MS, buttonHeld);
+  const bool compress = settingsOnInternet();
+  size_t samples = micRecord(f, MAX_QUESTION_MS, buttonHeld, compress);
 #endif
   uint32_t releaseMs = millis();                 // end of the child's question (REQ-N-01 starts here)
   f.print("\r\n--" BOUNDARY "--\r\n");
@@ -286,30 +321,30 @@ AskResult askQuestion(bool (*buttonHeld)()) {
     LittleFS.remove(BODY_PATH);
     return ASK_TOO_SHORT;
   }
-  wavHeader(wav, samples);
+  wavHeader(wav, samples, compress);
   f = LittleFS.open(BODY_PATH, "r+");
   f.seek(head.length());
   f.write(wav, 44);
   f.close();
   Serial.printf("[ask] recorded %.1f s\n", samples / 16000.0f);
-  if (!ensureBuffer()) { LittleFS.remove(BODY_PATH); return ASK_SERVER_ERROR; }
 
   // 2. "Hmm, let me think!" plays while the question uploads and the server answers
   fillerDone = false;
   xTaskCreate(fillerTask, "filler", 8192, nullptr, 1, nullptr);
+  networkWaitUntilQuiet();
+  if (!ensureBuffer()) { waitFiller(); LittleFS.remove(BODY_PATH); return ASK_SERVER_ERROR; }
 
   // 3. ask; the answer streams into the buffer and the player speaks it
   AskResult result = ASK_SERVER_ERROR;
   HTTPClient http;
-  http.begin(settingsServerUrl() + "/api/v1/voice/query");
-  http.addHeader("X-Device-Key", settingsDeviceKey());
-  http.addHeader("Accept", "application/x-tutor-voice; version=2");   // v2: answer streams as it's written
-  http.addHeader("Content-Type", "multipart/form-data; boundary=" BOUNDARY);
-  http.setConnectTimeout(5000);
-  http.setTimeout(ANSWER_TIMEOUT_MS);
-  File body = LittleFS.open(BODY_PATH, "r");
-  int code = http.sendRequest("POST", &body, body.size());
-  body.close();
+  int code = sendQuestion(http);
+  // ngrok sometimes hangs up on a handshake, or the server just restarted and the other route works
+  for (int retry = 0; retry < 2 && code == HTTPC_ERROR_CONNECTION_REFUSED; retry++) {
+    Serial.println("[ask] couldn't connect - checking the routes and trying again");
+    http.end();
+    settingsChooseServer();
+    if (ensureBuffer()) code = sendQuestion(http);
+  }
   if (code == 200) {
     xStreamBufferReset(pcm);
     receiving = false;
@@ -321,7 +356,8 @@ AskResult askQuestion(bool (*buttonHeld)()) {
     firstAnswerMs = 0;
     xTaskCreatePinnedToCore(playerTask, "player", 4096, nullptr, 3, nullptr, 1);
     AnswerSink sink;
-    http.writeToStream(&sink);
+    int streamed = http.writeToStream(&sink);
+    if (streamed < 0) Serial.printf("[ask] answer stream stopped: %d %s\n", streamed, http.errorToString(streamed).c_str());
     receiving = false;
     answerDone = true;
     while (!playerDone) delay(10);
@@ -335,8 +371,10 @@ AskResult askQuestion(bool (*buttonHeld)()) {
     Serial.printf("[ask] first word of the answer %.1f s after letting go; %d/%d sentences, %u/%u bytes: %s\n",
                   latency / 1000.0f, sink.framesReceived, sink.framesExpected, (unsigned)playedBytes,
                   (unsigned)sink.bytesExpected, complete ? "COMPLETE" : "CUT OFF");
+    Serial.printf("[ask] memory free %u, lowest ever %u bytes\n", (unsigned)ESP.getFreeHeap(), (unsigned)ESP.getMinFreeHeap());
     networkReportStatus(speech, stalls, stallMs, latency, complete ? 1 : 0);
   } else {
+    Serial.printf("[ask] memory free %u, largest block %u\n", (unsigned)ESP.getFreeHeap(), (unsigned)ESP.getMaxAllocHeap());
     Serial.printf("[ask] server said %d: %s\n", code, code > 0 ? http.getString().c_str() : http.errorToString(code).c_str());
   }
   http.end();

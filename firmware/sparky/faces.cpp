@@ -153,6 +153,17 @@ static uint8_t ease(uint32_t t, uint32_t period) {    // 0..255 triangle wave, s
 static void setLed(uint8_t brightness) { ledcWrite(PIN_LED, 255 - brightness); }   // wired 3V3 -> LED -> GPIO: LOW = on
 
 // ---------------------------------------------------------------- animator task
+static volatile bool asleep = false;
+
+void facesSleep() {
+  asleep = true;
+  delay(60);                                          // let the animator finish drawing
+  mx.control(MD_MAX72XX::SHUTDOWN, MD_MAX72XX::ON);
+  ledcDetach(PIN_LED);
+  pinMode(PIN_LED, OUTPUT);
+  digitalWrite(PIN_LED, HIGH);                        // wired to 3V3, so HIGH = off
+}
+
 static void animator(void*) {
   uint32_t nextBlink = millis() + 3000, nextGlance = millis() + 9000, glanceUntil = 0;
   uint32_t nextSurprise = millis() + SURPRISE_FIRST_MS, surpriseUntil = 0;
@@ -160,6 +171,10 @@ static void animator(void*) {
   uint32_t last[8] = {1};                             // forces the first draw
   uint8_t talk = 0;
   for (;;) {
+    if (asleep) {
+      vTaskDelay(pdMS_TO_TICKS(100));
+      continue;
+    }
     uint32_t now = millis(), f[8];
     uint8_t m = mood;
     uint32_t inMood = now - moodSince;

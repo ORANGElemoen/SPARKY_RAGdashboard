@@ -2,14 +2,17 @@
 #pragma once
 #include <Arduino.h>
 
-// Bench settings that stay on this PC (gitignored): SPARKY_SERVER, SPARKY_DEVICE_KEY (so the
-// setup page only needs the Wi-Fi) and SPARKY_TEST_QUESTION 1 (send the Studio "test_question"
-// voice line instead of recording the mic).
+// Settings that stay on this PC (gitignored): SPARKY_SERVER, SPARKY_INTERNET, SPARKY_DEVICE_KEY
+// (so the setup page only needs the Wi-Fi) and SPARKY_TEST_QUESTION 1 (send the Studio
+// "test_question" voice line instead of recording the mic).
 #if __has_include("local_config.h")
 #include "local_config.h"
 #endif
 #ifndef SPARKY_SERVER
 #define SPARKY_SERVER ""
+#endif
+#ifndef SPARKY_INTERNET
+#define SPARKY_INTERNET ""
 #endif
 #ifndef SPARKY_DEVICE_KEY
 #define SPARKY_DEVICE_KEY ""
@@ -37,12 +40,21 @@ constexpr uint32_t HAPPY_AFTER_ANSWER_MS = 2000;   // happy face once an answer 
 constexpr uint32_t SURPRISE_FIRST_MS = 60000;      // idle: show a random library face not used by a mood...
 constexpr uint32_t SURPRISE_MIN_MS = 120000, SURPRISE_MAX_MS = 240000;   // ...every 2-4 minutes
 constexpr uint32_t SURPRISE_SHOW_MS = 3000;        // ...for 3 seconds
-constexpr size_t PCM_BUFFER_BYTES = 65536;       // answer audio buffer: ~1.5 s at 22 kHz
+// Answer audio buffer: ~0.7 s of the full voice, ~1 s of the internet route's. 64 KB looked better but
+// left too little RAM: reading the answer failed with -8 "too less ram", and secure connections with -1.
+constexpr size_t PCM_BUFFER_BYTES = 32768;
 constexpr uint32_t PREBUFFER_MS = 1000;          // speak once this much is buffered
 // Wi-Fi transmit power. Full power (19.5 dBm) makes current spikes that sag a weak USB supply
 // below what the 3.3 V regulator needs, and the radio drops data (answers stutter on chargers).
 // 11 dBm is plenty within a classroom; raise it if Sparky is far from the router.
 #define SPARKY_WIFI_TX_POWER WIFI_POWER_11dBm
+// The ESP32's own buttons are inside the case, so quick presses of Sparky's button do these jobs:
+constexpr int SLEEP_TAPS = 3;                    // sleep; any press wakes Sparky again
+constexpr int SETUP_TAPS = 5;                    // restart into the setup page
+constexpr uint32_t TAPS_FINISHED_MS = 1500;      // no press for this long = the sequence is finished
+constexpr int SETUP_TAPS_PORTAL_SECONDS = 180;   // a child mashing the button can't keep Sparky offline for long
+constexpr uint32_t WIFI_GRACE_MS = 5000;         // a Wi-Fi drop shorter than this goes unnoticed
+constexpr uint32_t WIFI_GIVE_UP_MS = 30000;      // then say "no network" (and keep looking quietly)
 constexpr uint32_t STATUS_EVERY_MS = 60000;      // Wi-Fi signal report to the server while idle
 constexpr int MIC_SHIFT = 14;                 // INMP441 24-bit -> 16-bit; lower = louder (13 = x2)
 
