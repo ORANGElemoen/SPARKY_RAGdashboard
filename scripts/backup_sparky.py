@@ -7,6 +7,7 @@ Backs up everything Sparky needs that git does not hold, into one zip:
     data/studio/           voice lines and faces
     data/piper_voices/     Sparky's trained voice (the stock voices can be downloaded again)
     .env                   local settings, if there is one
+    firmware/sparky/local_config.h   private firmware settings, such as the internet address
 
 Safe to run while the server is on: the database is copied with SQLite's backup API.
 
@@ -30,7 +31,7 @@ DATABASE = Path("data/rag_database.db")
 FOLDERS = [Path("data/storage"), Path("data/studio")]
 SPARKY_VOICE_FILES = [Path("data/piper_voices/en_US-sparky-medium.onnx"),
                       Path("data/piper_voices/en_US-sparky-medium.onnx.json")]
-OPTIONAL_FILES = [Path(".env")]
+OPTIONAL_FILES = [Path(".env"), Path("firmware/sparky/local_config.h")]
 
 
 def snapshot_database(source: Path, target: Path) -> dict:

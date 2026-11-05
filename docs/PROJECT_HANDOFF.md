@@ -25,9 +25,10 @@ Key constraints that shaped every decision below:
 - **Fully local/offline** — no cloud APIs for LLM, STT, or TTS. This matches
   low-connectivity deployment (rural/low-bandwidth areas) and the original project's
   "no external API calls" design philosophy.
-- **The ESP32 talks to this server over the local network** using plain HTTP (the firmware
-  is built without HTTPS, see `firmware/sparky/build_opt.h`). It currently connects through
-  the laptop's Windows hotspot, with the server at `http://192.168.137.1:8001`.
+- **The ESP32 talks to this server over the laptop's hotspot** using plain HTTP
+  (`http://192.168.137.1:8001`) when it can reach it, with no internet needed. Otherwise it
+  uses the ngrok internet address over verified HTTPS (`firmware/sparky/tls_roots.h`) as a
+  backup for when the laptop can't be at a demo.
 - Everything runs on a Windows laptop right now (Python 3.14, RTX 3060 for Ollama).
 
 ## Architecture

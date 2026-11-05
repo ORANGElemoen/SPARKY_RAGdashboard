@@ -22,8 +22,9 @@ This file (CLAUDE.md) is the shorter, ongoing-guidance version.
 **Hardware ("Sparky") status**: the ESP32 works end to end on real hardware:
 WiFi captive portal onboarding, device auth, Studio pack sync (faces and voice
 lines), live mic recording, and streamed answers played through the speaker.
-The server and board currently connect over the laptop's Windows hotspot
-(`192.168.137.1`). See
+The board is local first: it uses the laptop's Windows hotspot
+(`192.168.137.1`) with no internet needed, and ngrok is only a backup for when
+the laptop can't be there. See
 `hardware/circuit/` (SKiDL/KiCad) and `hardware/cad/` (enclosure exports) for
 the physical-build artifacts, and `docs/sparky_*.pdf` for the shopping
 list/wiring/build-sequence docs.
@@ -147,12 +148,29 @@ POST call anywhere in the frontend, it needs this or it will silently
 ## 🔧 Common Development Tasks
 
 ### Network routes
-`scripts/start_sparky_server.bat` binds the server to the Windows hotspot
-(`192.168.137.1`), or to `127.0.0.1` when the hotspot is off. It opens an ngrok
-tunnel with a basic-auth login in front of every page. The admin pages have no
+`scripts/start_sparky_server.bat` turns on the Windows hotspot (`start_hotspot.ps1`,
+which also works with no internet, though the Settings page refuses) and binds the server
+to it, or to `127.0.0.1` if that fails. `sparky_status.ps1` is the control window: it
+opens an ngrok tunnel with a basic-auth login in front of every page. The admin pages have no
 login of their own, so never expose the server without that policy. The token and
-login live in `%LOCALAPPDATA%\ngrok`, never in this public repository. The firmware
-has no HTTPS yet, so the board can only use the hotspot route.
+login live in `%LOCALAPPDATA%\ngrok`, never in this public repository. Only the
+board's paths (`/api/v1/device/*`, `/api/v1/voice/query`) skip that login, because
+a board can't type a password, so every route on those paths must check the device
+key or CSRF token. The board uses the hotspot when it can reach it and the verified
+https internet address otherwise. `firmware/sparky/local_config.h` (gitignored) builds
+both addresses in.
+
+### Firmware limits worth knowing
+- Build and upload with `--fqbn esp32:esp32:esp32:PartitionScheme=no_ota`. Any other layout
+  moves the voice line storage and wipes it. After changing build flags, use `--clean` or a
+  fresh `--build-path`: a stale cache once silently dropped TLS.
+- Over ngrok the board receives about 22 KB/s, so that route uses compressed audio both ways
+  (`codec=mulaw`), and only one secure connection fits in RAM at a time.
+- The answer buffer must stay 32 KB. 64 KB caused -8 "too less ram" and TLS failures.
+- ngrok hangs up on a slow TLS handshake, so the certificate is checked after connecting
+  (`VerifiedClient` in `settings.cpp`), before anything is sent.
+- Speech recognition: keep `vad_filter` on whenever `hotwords` is used. Without it the hint
+  words make it invent speech in silence.
 
 ### Backups
 `data/` is mostly gitignored and this repository is public, so private data is
