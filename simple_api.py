@@ -12,6 +12,9 @@ if os.path.exists("src"):
 
 # Try to import from different locations
 try:
+    from core.local_models import use_downloaded_models_only
+
+    use_downloaded_models_only()  # before anything imports huggingface_hub
     from core.main import main
 except ImportError:
     try:

@@ -120,6 +120,23 @@ except ImportError:
 logging.basicConfig(level=logging.INFO)
 
 
+async def _warm_up_voice_and_search() -> None:
+    """Load the speech and search models now, so the first question isn't the slow one."""
+    try:
+        from .repositories.factory import RepositoryFactory
+
+        await RepositoryFactory.create_production_repository().vector_search.search_similar_text(
+            query="warm up", limit=1, threshold=0.99
+        )
+        from .services import voice_service
+
+        await asyncio.to_thread(voice_service._get_whisper_model)
+        await asyncio.to_thread(voice_service._get_piper_voice)
+        logger.info("Speech and search models are ready")
+    except Exception as e:  # voice support is optional, and this only saves time
+        logger.warning(f"Couldn't load the speech and search models ahead of time: {e}")
+
+
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     """Manage application lifespan events"""
@@ -145,6 +162,7 @@ async def lifespan(app: FastAPI):
         from .ollama_client import OllamaClient
 
         asyncio.create_task(asyncio.to_thread(lambda: OllamaClient().preload_model()))
+        asyncio.create_task(_warm_up_voice_and_search())
 
         # Initialize security
         logger.info("Initializing security systems...")
