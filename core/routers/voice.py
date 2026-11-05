@@ -25,7 +25,7 @@ from fastapi.responses import StreamingResponse
 from pydantic import BaseModel, Field
 
 from ..repositories.device_repository import Device
-from ..services.audio_framing import pack_frame, pack_metadata
+from ..services.audio_framing import pack_frame, pack_metadata, to_mulaw_wav
 from ..services.simple_rag_service import load_language_strings
 from ..services.voice_service import split_sentences
 from .device_auth import get_device_from_key
@@ -135,7 +135,7 @@ async def voice_query(
             raise HTTPException(status_code=400, detail="Audio file too large (max 10MB)")
         return StreamingResponse(
             _stream_answer_v2(audio_bytes, voice_service, rag_service, session_id,
-                              device.id if device else None, strings),
+                              device.id if device else None, strings, mulaw="codec=mulaw" in media[1:]),
             media_type=HARDWARE_MEDIA_TYPE,
         )
 
@@ -261,14 +261,18 @@ async def _stream_hardware_response(
     return StreamingResponse(frame_generator(), media_type=HARDWARE_MEDIA_TYPE)
 
 
-async def _stream_answer_v2(audio_bytes, voice_service, rag_service, session_id, device_id, strings):
+async def _stream_answer_v2(audio_bytes, voice_service, rag_service, session_id, device_id, strings, mulaw=False):
     """Protocol v2 body: [details][sentence audio]...[summary], each sentence spoken as soon as
     the AI has written it (see docs/PROTOCOL.md). The concurrency cap is held for the whole
     answer, since transcription, writing and speaking all happen while this body streams."""
 
+    def sentence_audio(text):
+        wav = voice_service.synthesize(text)
+        return to_mulaw_wav(wav) if mulaw else wav
+
     async def speak(text):
         for sentence in split_sentences(text):
-            yield pack_frame(await asyncio.to_thread(voice_service.synthesize, sentence))
+            yield pack_frame(await asyncio.to_thread(sentence_audio, sentence))
 
     async with _voice_semaphore:
         meta = {"protocol_version": STREAMING_PROTOCOL_VERSION, "transcript": "", "confidence": 0.0,
@@ -289,7 +293,7 @@ async def _stream_answer_v2(audio_bytes, voice_service, rag_service, session_id,
                         meta_sent = True
                         yield pack_frame(pack_metadata(meta))
                     elif kind == "sentence":
-                        yield pack_frame(await asyncio.to_thread(voice_service.synthesize, payload))
+                        yield pack_frame(await asyncio.to_thread(sentence_audio, payload))
                         frames += 1
                     elif "error" in payload:
                         logger.warning(f"RAG error for voice query: {payload['error']}")

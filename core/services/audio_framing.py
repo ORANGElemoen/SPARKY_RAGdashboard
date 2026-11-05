@@ -19,6 +19,29 @@ import struct
 from typing import Any, Dict
 
 
+WAV_FORMAT_MULAW = 7
+
+
+def to_mulaw_wav(wav_bytes: bytes) -> bytes:
+    """A sentence's WAV -> 16 kHz G.711 mu-law WAV with a plain 44-byte header: 16 KB/s, not 44.
+
+    For a board on the internet route, whose connection tops out near 22 KB/s (docs/PROTOCOL.md).
+    """
+    import numpy as np
+
+    from .studio_service import DEVICE_SAMPLE_RATE, to_device_wav  # needs scipy, so only when used
+
+    samples = np.frombuffer(to_device_wav(wav_bytes)[44:], dtype="<i2").astype(np.int32)
+    negative = samples < 0
+    magnitude = np.minimum(np.abs(samples), 32635) + 0x84
+    exponent = np.floor(np.log2(magnitude)).astype(np.int32) - 7
+    mantissa = (magnitude >> (exponent + 3)) & 0x0F
+    data = (~((negative.astype(np.int32) << 7) | (exponent << 4) | mantissa) & 0xFF).astype(np.uint8).tobytes()
+    header = (b"RIFF" + struct.pack("<I", 36 + len(data)) + b"WAVEfmt " + struct.pack("<IHHIIHH", 16, WAV_FORMAT_MULAW, 1,
+              DEVICE_SAMPLE_RATE, DEVICE_SAMPLE_RATE, 1, 8) + b"data" + struct.pack("<I", len(data)))
+    return header + data
+
+
 def pack_frame(data: bytes) -> bytes:
     """One length-prefixed frame: 4-byte big-endian length + payload."""
     return struct.pack(">I", len(data)) + data

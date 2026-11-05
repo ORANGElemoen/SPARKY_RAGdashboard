@@ -7,12 +7,15 @@ import struct
 import time
 import wave
 
+import numpy as np
 import pytest
 from fastapi import FastAPI
 from fastapi.testclient import TestClient
 
 from core.routers import voice
 from core.services import simple_rag_service as rag
+from core.services.audio_framing import to_mulaw_wav
+from core.services.studio_service import to_device_wav
 from core.services.simple_rag_service import DEFAULT_LANGUAGE_STRINGS as EN
 
 ANSWER = ["The sky", " is blue. Sunlight", " scatters in the air! What", " colour is a sunset?"]
@@ -127,6 +130,42 @@ def test_v2_sends_details_first_then_audio_then_a_closing_summary():
     assert meta["frame_count"] is None                 # not known yet while streaming
     assert all(b[:4] == b"RIFF" for b in blocks[1:-1]) and len(blocks) - 2 == len(SENTENCES)
     assert trailer == {"protocol_version": 2, "answer_text": " ".join(SENTENCES), "frame_count": len(SENTENCES)}
+
+
+def _mulaw_decode(byte):
+    """The same steps as mulawDecode in firmware/sparky/ask.cpp."""
+    u = ~byte & 0xFF
+    t = (((u & 0x0F) << 3) + 0x84) << ((u & 0x70) >> 4)
+    return 0x84 - t if u & 0x80 else t - 0x84
+
+
+def test_the_internet_route_gets_compressed_audio():
+    r = _client().post("/api/v1/voice/query",
+                       headers={"Accept": "application/x-tutor-voice; version=2; codec=mulaw"},
+                       files={"audio": ("q.wav", _wav(), "audio/wav")})
+    frames = _blocks(r.content)[1:-1]
+    assert len(frames) == len(SENTENCES)
+    for frame in frames:
+        assert frame[:4] == b"RIFF" and frame[36:40] == b"data"
+        assert struct.unpack_from("<HHI", frame, 20) == (7, 1, 16000)      # mu-law, mono, 16 kHz
+        assert struct.unpack_from("<I", frame, 40)[0] == len(frame) - 44
+
+
+def test_compressed_audio_is_half_the_size_and_decodes_close_to_the_original():
+    rate, seconds = 22050, 1
+    tone = np.sin(2 * np.pi * 440 * np.arange(rate * seconds) / rate) * 20000
+    buf = io.BytesIO()
+    with wave.open(buf, "wb") as w:
+        w.setnchannels(1)
+        w.setsampwidth(2)
+        w.setframerate(rate)
+        w.writeframes(tone.astype("<i2").tobytes())
+    frame = to_mulaw_wav(buf.getvalue())
+    assert abs(len(frame) - 44 - 16000 * seconds) < 10                 # 16 KB/s, the original was 44
+    decoded = np.array([_mulaw_decode(b) for b in frame[44:]], dtype=np.float64)
+    expected = np.frombuffer(to_device_wav(buf.getvalue())[44:], dtype="<i2").astype(np.float64)
+    assert np.sqrt(np.mean((decoded - expected) ** 2)) < 400           # about 2% of the loudness
+    assert _mulaw_decode(to_mulaw_wav(_wav(2205))[44]) == 0            # silence stays silent
 
 
 def test_v1_is_unchanged_for_older_firmware():

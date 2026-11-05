@@ -130,6 +130,11 @@ on the server).
 - The transcript-too-short and error cases still send metadata, the spoken
   retry/error prompt, then the summary.
 
+`Accept: application/x-tutor-voice; version=2; codec=mulaw` sends each sentence
+as a 16 kHz G.711 mu-law WAV (format tag 7 at byte 20, 8 bits, still a 44-byte
+header) at 16 KB/s instead of 44 KB/s. Sparky asks for this on the internet route:
+over ngrok it receives about 22 KB/s, too little for the full-quality voice.
+
 ## Sessions
 
 Conversation memory only covers the last 30 minutes of a session
