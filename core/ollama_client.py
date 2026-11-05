@@ -59,7 +59,7 @@ class OllamaClient:
             if CONFIG_AVAILABLE and config:
                 base_url = config.OLLAMA_HOST
             else:
-                base_url = "http://localhost:11434"
+                base_url = "http://127.0.0.1:11434"
 
         self.base_url = base_url.rstrip("/")
         self.timeout = timeout

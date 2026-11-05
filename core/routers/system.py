@@ -58,7 +58,7 @@ async def system_status(monitor=Depends(get_system_monitor)):
                 "cpu_usage": "12%",
             },
             "services": {
-                "ollama": {"status": "connected", "host": "http://localhost:11434"},
+                "ollama": {"status": "connected", "host": "http://127.0.0.1:11434"},
                 "vector_search": {"status": "available", "type": "FAISS"},
                 "storage": {"status": "ready", "type": "persistent"},
             },

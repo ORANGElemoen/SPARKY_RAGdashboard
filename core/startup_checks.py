@@ -130,7 +130,7 @@ class StartupChecker:
 
         # Check if Ollama is running on default port
         try:
-            response = requests.get("http://localhost:11434/api/tags", timeout=5)
+            response = requests.get("http://127.0.0.1:11434/api/tags", timeout=5)
             if response.status_code == 200:
                 self.print_status("Ollama service is running", "PASS")
                 return True
@@ -158,7 +158,7 @@ class StartupChecker:
         self.print_status("Checking Ollama models...")
 
         try:
-            response = requests.get("http://localhost:11434/api/tags", timeout=10)
+            response = requests.get("http://127.0.0.1:11434/api/tags", timeout=10)
             if response.status_code != 200:
                 self.print_status(
                     "Cannot check models - Ollama service not available", "FAIL"
