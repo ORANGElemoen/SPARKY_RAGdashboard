@@ -10,24 +10,25 @@ This started as a generic, open-source "upload documents, ask questions" RAG (Re
 Augmented Generation) system. It has since been repurposed and heavily modified into a
 **voice-driven STEM tutor for children in Sub-Saharan Africa**.
 
-**End goal (not yet built)**: a physical device — ESP32 microcontroller + microphone +
-speaker + LCD screen — that a child can speak a question into. The ESP32 sends the audio
-over local WiFi to this server, which transcribes it, answers it in a fun/encouraging way
-grounded in uploaded STEM textbooks (falling back to general knowledge when nothing
-relevant is uploaded), speaks the answer back, and the ESP32 plays it through a speaker
-and shows the text on an LCD.
+**The device**: an ESP32 microcontroller + microphone + speaker + LED matrix face that a
+child can speak a question into. The ESP32 sends the audio over WiFi to this server, which
+transcribes it, answers it in a fun/encouraging way grounded in uploaded STEM textbooks
+(falling back to general knowledge when nothing relevant is uploaded), and streams the
+spoken answer back for the ESP32 to play through its speaker.
 
 **What exists today**: the full server-side pipeline (speech-to-text → RAG tutor →
-text-to-speech) is built, tested, and working end-to-end, testable right now from a
-browser tab using this computer's own mic/speakers as a stand-in for the ESP32. The ESP32
-hardware and firmware do not exist yet — that's the next phase.
+text-to-speech) is built and tested, and also runs from a browser tab using this computer's
+own mic/speakers. The ESP32 firmware (`firmware/sparky/`) works on real hardware: Wi-Fi
+setup, device auth, Sparky Studio pack sync, live mic questions and streamed answers.
 
 Key constraints that shaped every decision below:
 - **Fully local/offline** — no cloud APIs for LLM, STT, or TTS. This matches
   low-connectivity deployment (rural/low-bandwidth areas) and the original project's
   "no external API calls" design philosophy.
-- **ESP32 will talk to this server over the local network** (not the internet).
-- Everything runs on a Windows dev machine right now (Python 3.14, no GPU).
+- **The ESP32 talks to this server over the local network** using plain HTTP (the firmware
+  is built without HTTPS, see `firmware/sparky/build_opt.h`). It currently connects through
+  the laptop's Windows hotspot, with the server at `http://192.168.137.1:8001`.
+- Everything runs on a Windows laptop right now (Python 3.14, RTX 3060 for Ollama).
 
 ## Architecture
 
@@ -232,8 +233,8 @@ similar code is touched again:
 ## How to run everything
 
 ```bash
-# Start the server (Ollama must already be running with `mistral` pulled)
-python simple_api.py
+# Start the server (Ollama must already be running with `qwen3.5:4b` pulled)
+scripts\start_sparky_server.bat
 # → http://127.0.0.1:8001/ui        (main UI: Text Chat + Voice Chat tabs)
 # → http://127.0.0.1:8001/admin     (model management, language settings)
 # → http://127.0.0.1:8001/admin/documents/management  (document filters/cleanup)
@@ -245,10 +246,10 @@ pip install -r deployment/requirements/voice_requirements.txt
 python -m piper.download_voices en_US-hfc_female-medium --download-dir data/piper_voices
 ```
 
-Currently uploaded documents (for context — these are what the tutor can currently
-ground answers in): science experiment books, a math history book, math games for kids,
-an engineering/technology/science Wikipedia-derived set, and a "STEM Child Tutor Guide"
-PDF — 9 documents total, all under `data/storage/`.
+Currently uploaded documents (for context — these are what the tutor can currently ground
+answers in): the 13 Sparky experiment sheets from `docs/experiments/`. The uploads and
+database are not in git: back them up with `scripts/backup_sparky.py` and restore them with
+`docs/NEW_MACHINE.md`.
 
 ## What to upload/paste to a new Claude session
 
@@ -264,8 +265,5 @@ If you're starting a fresh Claude conversation (not Claude Code with repo access
    usually: `core/services/simple_rag_service.py` (the RAG/tutor logic),
    `core/routers/voice.py` + `core/services/voice_service.py` (voice pipeline), and
    `static/index.html` (the frontend) — depending on what you're working on next.
-4. Mention explicitly that the next phase is **ESP32 firmware** (recording mic audio,
-   POSTing it to `/api/v1/voice/query` over local WiFi, playing back the returned
-   base64 WAV through a speaker, showing `answer_text` on an LCD) since that's not
-   started yet and needs a fresh planning conversation of its own — hardware specifics
-   (mic model, speaker/amp, LCD driver) aren't decided yet either.
+4. For firmware or device work, also share `docs/PROTOCOL.md` and
+   `firmware/sparky/README.md`.
