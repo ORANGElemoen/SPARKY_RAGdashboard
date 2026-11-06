@@ -1,0 +1,44 @@
+# Sparky in Docker. Start with scripts\docker_start.bat, which also sets up the hotspot and graphics card.
+name: sparky
+
+services:
+  sparky:
+    image: sparky:latest
+    build:
+      context: .
+      dockerfile: docker/Dockerfile
+    ports:
+      # The admin pages have no login, so only publish on the address asked for, never on every network
+      - "${SPARKY_BIND:-127.0.0.1}:8001:8001"
+    environment:
+      OLLAMA_HOST: http://ollama:11434
+    volumes:
+      - sparky-data:/app/data
+    depends_on:
+      ollama:
+        condition: service_healthy
+    restart: on-failure
+
+  ollama:
+    image: sparky-ollama:latest
+    build:
+      context: docker
+      dockerfile: ollama.Dockerfile
+    restart: on-failure
+
+  # The optional internet route. The login in policy.yml guards every page except the board's.
+  ngrok:
+    image: ngrok/ngrok:latest
+    profiles: [internet]
+    command: ["http", "sparky:8001", "--traffic-policy-file", "/secrets/policy.yml"]
+    env_file:
+      - path: docker/secrets/ngrok.env
+        required: false
+    volumes:
+      - ./docker/secrets/policy.yml:/secrets/policy.yml:ro
+    ports:
+      - "127.0.0.1:4040:4040"
+    restart: on-failure
+
+volumes:
+  sparky-data:

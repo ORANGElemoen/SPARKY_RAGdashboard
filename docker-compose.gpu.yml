@@ -1,0 +1,4 @@
+# Added when the computer has an NVIDIA graphics card, so the AI model runs on it.
+services:
+  ollama:
+    gpus: all
