@@ -221,3 +221,7 @@ firmware/sparky/local_config.h
 
 # Sparky backups: private data (question log, uploads). This repository is public.
 backups/
+
+# Private content copied in to build the Docker image, and its ngrok login
+.docker-seed/
+docker/secrets/

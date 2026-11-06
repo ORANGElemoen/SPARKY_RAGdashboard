@@ -172,6 +172,14 @@ both addresses in.
 - Speech recognition: keep `vad_filter` on whenever `hotwords` is used. Without it the hint
   words make it invent speech in silence.
 
+### Docker
+`docker-compose.yml` runs Sparky and Ollama, with ngrok as an optional profile, for a quick
+restore on another computer. `scripts/docker_start.bat` is the one-click start. Images are
+private on ghcr.io because they hold Sparky's content, including the question log, which a real
+deployment with children must leave out. The ngrok login stays in gitignored `docker/secrets/`.
+`scripts/docker_prepare.py` copies content into gitignored `.docker-seed/` for the build, rewriting
+the database's Windows file paths. Tested only on this laptop so far, with a graphics card.
+
 ### Backups
 `data/` is mostly gitignored and this repository is public, so private data is
 backed up separately with `python scripts/backup_sparky.py`. Never commit the

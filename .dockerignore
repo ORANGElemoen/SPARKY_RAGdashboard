@@ -1,0 +1,10 @@
+# Only what the image needs. Keeps out the virtual environment, backups, firmware settings and secrets.
+*
+!core/
+!config/
+!static/
+!simple_api.py
+!deployment/requirements/
+!.docker-seed/
+**/__pycache__/
+**/*.pyc
