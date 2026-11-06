@@ -1,5 +1,38 @@
 # Moving Sparky to a new machine
 
+There are two ways. Docker is the quick one. The manual way below it needs no Docker.
+
+## With Docker
+
+The images hold the app, models, voice, voice lines, faces, sheets, question log and
+device record. They don't hold the ngrok token or login. They're private on GitHub:
+keep them that way, because a real deployment with children must leave the question log out.
+
+1. Install Docker Desktop and restart.
+2. `git clone https://github.com/ORANGElemoen/SPARKY_RAGdashboard.git`
+3. Make a classic token at github.com/settings/tokens/new with `read:packages` ticked, then run
+   `powershell -ExecutionPolicy Bypass -File scripts\docker_login.ps1`. The script also
+   accepts a token with `write:packages`.
+4. Double-click `scripts\docker_start.bat`. It downloads about 13 GB once, turns on the
+   hotspot, starts everything and offers to set up the internet route.
+
+With no internet or Git, use a USB copy instead, made with
+`powershell -ExecutionPolicy Bypass -File scripts\docker_bundle.ps1 E:\`. On the new computer,
+double-click `scripts\docker_start.bat` in the `Sparky-Docker` folder.
+
+**After changing sheets, voice lines or faces:** run `scripts\docker_build.bat`, then push
+the images again. A computer already running Sparky keeps its own content until
+`docker compose down -v`, which deletes its changes.
+
+**On a shared computer:** press **F** in the control window to remove your ngrok login, then
+run `docker logout ghcr.io`.
+
+**Running out of disk:** Docker's disk file never shrinks by itself, and builds grow it by
+tens of GB. Run `docker builder prune -a -f`, stop Docker Desktop, and compact
+`%LOCALAPPDATA%\Docker\wsl\disk\docker_data.vhdx` with diskpart.
+
+## Without Docker
+
 Git holds the code. Everything private lives in a backup zip made by
 `scripts/backup_sparky.py`. You need both.
 
