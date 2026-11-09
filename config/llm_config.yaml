@@ -31,14 +31,28 @@ models:
     temperature: 0.2
   gemini:
     context_length: online
-    description: Online (Google AI Studio), for comparison tests only. Sends the question
-      text to Google, never the voice. Needs GEMINI_API_KEY in .env; the local model
-      answers if Gemini can't.
+    description: Online (Google AI Studio), newest Flash, for comparison tests only.
+      Was overloaded and slow on 2026-11-10. Sends the question text to Google, never
+      the voice. Needs GEMINI_API_KEY in .env; the local model answers if Gemini can't.
     local_model: qwen3.5
     max_tokens: 600
     name: gemini-3.8-flash
     provider: gemini
     temperature: 0.4
+    thinking:
+      thinkingLevel: low
+  gemini-2.5:
+    context_length: online
+    description: Online (Google AI Studio), older but fast and reliable Flash, for
+      comparison tests only. Sends the question text to Google, never the voice. Needs
+      GEMINI_API_KEY in .env; the local model answers if Gemini can't.
+    local_model: qwen3.5
+    max_tokens: 600
+    name: gemini-2.5-flash
+    provider: gemini
+    temperature: 0.4
+    thinking:
+      thinkingBudget: 0
   gemma2:
     context_length: 8192
     description: 🌟 Google's fast model - Good balance (15-25s)

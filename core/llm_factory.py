@@ -31,6 +31,8 @@ def make_llm_client(timeout: int = 60):
     if entry.get("provider") == "gemini":
         from .gemini_client import GeminiClient
 
-        # OllamaClient() picks the entry's local_model (see _load_model_from_config)
-        return GeminiClient(entry["name"], timeout=timeout, fallback=OllamaClient(timeout=timeout))
+        # OllamaClient() picks the entry's local_model (see _load_model_from_config). Gemini
+        # keeps its own short timeout, so a busy Google hands over to the local model quickly.
+        return GeminiClient(entry["name"], fallback=OllamaClient(timeout=timeout),
+                            thinking=entry.get("thinking"))
     return OllamaClient(timeout=timeout)

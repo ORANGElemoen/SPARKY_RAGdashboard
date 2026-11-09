@@ -29,6 +29,12 @@ API_URL = "https://generativelanguage.googleapis.com/v1beta/models/{model}:{meth
 # check) could leave no room for the answer. Limits below this are raised to it; the answer
 # itself is still as short as the prompt asks, so this costs nothing extra.
 MIN_OUTPUT_TOKENS = 1024
+# Sparky's quick checks (message type, follow-up) ask for a word or two. The local model
+# answers those in about 0.2 s; over the internet each would add a second or more.
+QUICK_CHECK_TOKENS = 16
+# How long to wait for Google before the local model answers instead. Busy Gemini models
+# took up to 28 s just to say "high demand" (2026-11-10).
+TIMEOUT_S = float(os.getenv("GEMINI_TIMEOUT", "8"))
 ENV_FILE = Path(".env")
 
 
@@ -50,14 +56,15 @@ class GeminiError(Exception):
 
 
 class GeminiClient:
-    # Set once Gemini rejects the thinking setting, so it isn't sent again
-    _send_thinking = True
+    # Models that rejected their thinking setting, so it isn't sent to them again
+    _no_thinking: set = set()
 
-    def __init__(self, model: str, timeout: int = 60, fallback=None, thinking: Optional[str] = None):
+    def __init__(self, model: str, timeout: float = TIMEOUT_S, fallback=None, thinking: Optional[dict] = None):
         self.model = model
         self.timeout = timeout
-        self.fallback = fallback  # an OllamaClient, used whenever Gemini can't answer
-        self.thinking = thinking or os.getenv("GEMINI_THINKING", "low")
+        self.fallback = fallback  # an OllamaClient: answers whenever Gemini can't, and the quick checks
+        # Gemini 3 models take {"thinkingLevel": "low"}; 2.5 models {"thinkingBudget": 0} (off)
+        self.thinking = thinking
 
     # ------------------------------------------------------------------ helpers
     def is_available(self) -> bool:
@@ -65,8 +72,8 @@ class GeminiClient:
 
     def _body(self, prompt: str, max_tokens: int, temperature: float) -> dict:
         generation = {"temperature": temperature, "maxOutputTokens": max(max_tokens, MIN_OUTPUT_TOKENS)}
-        if self.thinking and GeminiClient._send_thinking:
-            generation["thinkingConfig"] = {"thinkingLevel": self.thinking}
+        if self.thinking and self.model not in GeminiClient._no_thinking:
+            generation["thinkingConfig"] = dict(self.thinking)
         return {"contents": [{"role": "user", "parts": [{"text": prompt}]}], "generationConfig": generation}
 
     def _post(self, method: str, prompt: str, max_tokens: int, temperature: float, stream: bool = False):
@@ -78,10 +85,10 @@ class GeminiClient:
         for attempt in range(2):
             response = requests.post(url, headers=headers, json=self._body(prompt, max_tokens, temperature),
                                      stream=stream, timeout=(10, self.timeout))
-            if response.status_code == 400 and attempt == 0 and GeminiClient._send_thinking \
-                    and "thinking" in response.text.lower():
-                logger.info("Gemini rejected the thinking setting; sending requests without it")
-                GeminiClient._send_thinking = False
+            if response.status_code == 400 and attempt == 0 and self.thinking \
+                    and self.model not in GeminiClient._no_thinking and "thinking" in response.text.lower():
+                logger.info(f"{self.model} rejected the thinking setting; sending requests without it")
+                GeminiClient._no_thinking.add(self.model)
                 continue
             if response.status_code != 200:
                 detail = response.text[:300].replace(key, "***")
@@ -122,6 +129,10 @@ class GeminiClient:
         max_retries: int = 1,
         is_complete_prompt: bool = False,
     ) -> Optional[str]:
+        if max_tokens <= QUICK_CHECK_TOKENS and self.fallback is not None:
+            return self.fallback.generate_answer(query=query, context=context, max_tokens=max_tokens,
+                                                 temperature=temperature, max_retries=max_retries,
+                                                 is_complete_prompt=is_complete_prompt)
         prompt = query if is_complete_prompt else f"{context}\n\n{query}".strip()
         started = time.time()
         try:

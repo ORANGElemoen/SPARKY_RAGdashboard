@@ -83,7 +83,11 @@ open-source-rag-system/
    tutor.
 3. **Fully local/offline**: no cloud LLM/STT/TTS APIs. This is a deliberate
    constraint (deployment target has limited/costly internet), not an
-   oversight — don't suggest cloud alternatives as the default.
+   oversight — don't suggest cloud alternatives as the default. The one
+   exception is the optional "gemini" models in `config/llm_config.yaml`
+   (`core/gemini_client.py`), added at the lecturer's request for comparison
+   tests: off by default, text only (STT/TTS stay local), key in the
+   gitignored `.env`, and the local model answers whenever Gemini can't.
 4. **Multi-language is data, not code**: language-specific strings and
    prompts live in `config/languages/*.yaml`. Never hardcode English or
    German text into Python for anything user-facing — add/edit a language

@@ -48,7 +48,7 @@ class LocalModel:
 @pytest.fixture
 def key(monkeypatch):
     monkeypatch.setenv("GEMINI_API_KEY", "test-key")
-    monkeypatch.setattr(gc.GeminiClient, "_send_thinking", True)
+    monkeypatch.setattr(gc.GeminiClient, "_no_thinking", set())
 
 
 def test_an_answer_comes_back_without_the_thinking(key, monkeypatch):
@@ -59,7 +59,7 @@ def test_an_answer_comes_back_without_the_thinking(key, monkeypatch):
         return FakeResponse(data={"candidates": [{"content": {"parts": [
             {"text": "I should be friendly.", "thought": True}, {"text": "The sky is blue!"}]}}]})
     monkeypatch.setattr(gc.requests, "post", post)
-    answer = gc.GeminiClient("gemini-3.8-flash").generate_answer("Why?", "", max_tokens=4, is_complete_prompt=True)
+    answer = gc.GeminiClient("gemini-3.8-flash").generate_answer("Why?", "", max_tokens=40, is_complete_prompt=True)
     assert answer == "The sky is blue!"
     assert "gemini-3.8-flash:generateContent" in sent["url"]
     assert sent["headers"]["x-goog-api-key"] == "test-key" and "test-key" not in sent["url"]
@@ -114,8 +114,11 @@ def test_a_rejected_thinking_setting_is_dropped(key, monkeypatch):
             return FakeResponse(status=400, text="Unknown field thinkingConfig.thinkingLevel")
         return FakeResponse(data={"candidates": [{"content": {"parts": [{"text": "ok"}]}}]})
     monkeypatch.setattr(gc.requests, "post", post)
-    assert gc.GeminiClient("g").generate_answer("Why?", "", is_complete_prompt=True) == "ok"
-    assert len(bodies) == 2 and "thinkingConfig" not in bodies[1]["generationConfig"]
+    client = gc.GeminiClient("g", thinking={"thinkingLevel": "minimal"})
+    assert client.generate_answer("Why?", "", is_complete_prompt=True) == "ok"
+    assert client.generate_answer("Why?", "", is_complete_prompt=True) == "ok"
+    assert len(bodies) == 3 and "thinkingConfig" not in bodies[2]["generationConfig"]
+    assert bodies[0]["generationConfig"]["thinkingConfig"] == {"thinkingLevel": "minimal"} and "thinkingConfig" not in bodies[1]["generationConfig"]
 
 
 def test_the_local_client_never_loads_gemini_into_ollama(tmp_path, monkeypatch):
@@ -131,3 +134,11 @@ def test_the_local_client_never_loads_gemini_into_ollama(tmp_path, monkeypatch):
     (tmp_path / "config" / "llm_config.yaml").write_text(cfg.read_text(encoding="utf-8"), encoding="utf-8")
     client = ollama_client.OllamaClient.__new__(ollama_client.OllamaClient)
     assert client._load_model_from_config() == "qwen3.5:4b"
+
+
+def test_quick_checks_stay_on_the_local_model(key, monkeypatch):
+    def post(*a, **k):
+        raise AssertionError("a one-word check should not go to Google")
+    monkeypatch.setattr(gc.requests, "post", post)
+    client = gc.GeminiClient("g", fallback=LocalModel())
+    assert client.generate_answer("QUESTION or ANSWER?", "", max_tokens=4, is_complete_prompt=True) == "local answer"
