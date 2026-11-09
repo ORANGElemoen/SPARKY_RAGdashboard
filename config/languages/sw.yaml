@@ -148,3 +148,14 @@ maths_correct: "yuko sahihi"
 maths_incorrect: "bado hajapata jibu sahihi"
 # Words the speech recogniser should expect: Sparky's name and common science words
 stt_hotwords: "Sparky nyasi sayansi jaribio betri limau mvuto"
+
+# Anachosema Sparky kwanza, kulingana na aina ya ujumbe (swali, jibu au kauli). Kwa sauti tu.
+openers:
+  question: ["Swali zuri!", "Lo, swali zuri sana!", "Hmm, ngoja nifikirie!"]
+  answer: ["Sawa, tuone!", "Hmm, tuone!"]
+  statement: []
+message_type_notes:
+  question: ""
+  answer: "(Mtoto anajibu ulichouliza mwisho. Kama uliuliza swali la chemsha bongo lenye jibu sahihi, mwambie kwa upole kama yuko sahihi na kwa nini. Kama uliuliza anachotaka, kama kusikia zaidi, fanya tu alichochagua.)"
+  statement: "(Mtoto anakuambia kitu, hauulizi swali. Jibu kwa uchangamfu kile alichosema.)"
+opener_note: "(Tayari umesema \"{opener}\" kwa sauti. Endelea moja kwa moja bila kurudia.)"

@@ -164,4 +164,60 @@ maths_words:
   operator_phrases: {"divided by": "/", "multiplied by": "*", "take away": "-"}
   joiners: [and]
 # Words the speech recogniser should expect: Sparky's name and common science words
-stt_hotwords: "Sparky grass science experiment battery lemon gravity"
+stt_hotwords: "Sparky lesson grass science experiment battery lemon gravity"
+
+# The first thing Sparky says out loud, by the kind of message the child said (the server's
+# AI check decides: question, answer or statement). An empty list says nothing extra.
+# Voice only. The board's own button-release lines play before anyone knows what was said.
+openers:
+  question: ["Good question!", "Ooh, great question!", "Hmm, let me think!"]
+  answer: ["Okay, let's see!", "Hmm, let's see!"]
+  statement: []
+# Added under the child's message in the prompt, so the reply fits the kind of message
+message_type_notes:
+  question: ""
+  answer: "(The child is replying to what you asked last. If you asked a quiz question with a right answer, tell them kindly whether they are right and why. If you asked what they want, like whether to hear more, just do what they chose.)"
+  statement: "(The child is telling you something, not asking a question. Reply warmly to what they said.)"
+# The model's own "Great question!" after an opener is removed. Matched against the
+# sentence in lower case, without punctuation.
+repeated_opener_pattern: '((oh|ooh|wow|what|that s|that is|such) )*(a |an )?(really |very )?(good|great|excellent|fantastic|awesome|interesting|wonderful|amazing|cool|super) question'
+opener_note: "(You have already said \"{opener}\" out loud. Carry straight on without repeating it.)"
+
+# ---------------------------------------------------------------- guided lessons
+# The teacher chooses which lessons are on offer (admin dashboard -> Lessons) and the class
+# grade sets the level. A learner starts one by voice with a message containing one of
+# lesson_start_words. {titles} is a list joined with lesson_list_join / lesson_list_last.
+lesson_start_words: ["lesson", "lessons"]
+lesson_list_join: ", "
+lesson_list_last: " and "
+lesson_none: "I don't have any lessons ready right now. Ask your teacher to choose some for me! What else would you like to know?"
+lesson_offer_one: "I have a lesson for you about {title}. Shall we start?"
+lesson_offer_many: "I have {count} lessons for you: {titles}. Which one would you like?"
+lesson_which: "Which one would you like? I have {titles}."
+# 'What lessons can I do?': Sparky lists the subjects (each lesson's category) that have lessons on
+# offer, then the lessons in the one picked. Lessons without a category count as lesson_other_category.
+lesson_offer_categories: "I have lessons about {categories}. Which subject would you like?"
+lesson_which_category: "Which subject would you like? I have lessons about {categories}."
+lesson_other_category: "other things"
+# "Go back" while lessons are listed: back to the subjects
+lesson_back_words: ["back", "subjects", "subject", "categories", "category", "different"]
+lesson_not_now: "Okay, no lesson for now. Just say lesson whenever you want one!"
+lesson_intro: "Let's start the lesson about {title}! {hook}"
+lesson_outcomes: "Today you will learn {outcomes}."
+lesson_ready: "Are you ready for step one?"
+lesson_step: "Step {number}. {text}"
+lesson_step_prompt: "Say next when you're done."
+lesson_last_step_prompt: "That was the last step! Say next when you're done, and then we'll have a quick quiz."
+lesson_waiting: "Okay, take your time. Say next when you're ready."
+lesson_after_question: "When you're ready, say next to carry on with the lesson."
+lesson_quiz_intro: "Great work! Now let's see what you remember."
+lesson_question: "Question {number}. {question}"
+lesson_correct: ["That's right!", "Yes, well done!", "Correct, great thinking!"]
+lesson_wrong: "Not quite. The answer is {answer}."
+lesson_wrap: "You got {score} out of {total}! {recap} Well done for finishing the lesson!"
+lesson_stopped: "Okay, we'll stop the lesson here. You can start it again any time by saying lesson!"
+# Spoken navigation, matched as whole words in short messages (5 words or fewer)
+lesson_next_words: ["next", "done", "ready", "yes", "yeah", "okay", "ok", "finished", "go", "start", "sure", "continue"]
+lesson_repeat_words: ["repeat", "again", "pardon"]
+lesson_stop_words: ["stop", "quit", "end", "exit", "cancel"]
+lesson_no_words: ["no", "nope", "not", "later"]

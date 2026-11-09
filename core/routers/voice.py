@@ -20,7 +20,7 @@ import logging
 import os
 from typing import Optional
 
-from fastapi import APIRouter, Depends, File, Form, Header, HTTPException, UploadFile
+from fastapi import APIRouter, Depends, File, Form, Header, HTTPException, Request, UploadFile
 from fastapi.responses import StreamingResponse
 from pydantic import BaseModel, Field
 
@@ -94,8 +94,15 @@ def get_voice_service():
         )
 
 
+def _heard_words(transcript: str) -> bool:
+    """True if the recogniser heard any word or number. Short replies count: children answer
+    Sparky's questions with "8", "No" or "Ja", which a minimum length used to throw away."""
+    return any(ch.isalnum() for ch in transcript)
+
+
 @router.post("/query")
 async def voice_query(
+    request: Request,
     audio: UploadFile = File(...),
     session_id: Optional[str] = Form(
         default=None,
@@ -135,7 +142,8 @@ async def voice_query(
             raise HTTPException(status_code=400, detail="Audio file too large (max 10MB)")
         return StreamingResponse(
             _stream_answer_v2(audio_bytes, voice_service, rag_service, session_id,
-                              device.id if device else None, strings, mulaw="codec=mulaw" in media[1:]),
+                              device.id if device else None, strings, mulaw="codec=mulaw" in media[1:],
+                              request=request),
             media_type=HARDWARE_MEDIA_TYPE,
         )
 
@@ -157,7 +165,7 @@ async def voice_query(
             used_general_knowledge = False
             confidence = 0.0
 
-            if len(transcript.strip()) < 3:
+            if not _heard_words(transcript):
                 answer_text = strings["voice_retry_prompt"]
                 spoken_answer = answer_text
             else:
@@ -261,7 +269,8 @@ async def _stream_hardware_response(
     return StreamingResponse(frame_generator(), media_type=HARDWARE_MEDIA_TYPE)
 
 
-async def _stream_answer_v2(audio_bytes, voice_service, rag_service, session_id, device_id, strings, mulaw=False):
+async def _stream_answer_v2(audio_bytes, voice_service, rag_service, session_id, device_id, strings, mulaw=False,
+                            request=None):
     """Protocol v2 body: [details][sentence audio]...[summary], each sentence spoken as soon as
     the AI has written it (see docs/PROTOCOL.md). The concurrency cap is held for the whole
     answer, since transcription, writing and speaking all happen while this body streams."""
@@ -282,24 +291,33 @@ async def _stream_answer_v2(audio_bytes, voice_service, rag_service, session_id,
             transcript = await asyncio.to_thread(voice_service.transcribe, audio_bytes)
             logger.info(f"Voice transcript: {transcript[:100]}")
             meta["transcript"] = transcript
-            if len(transcript.strip()) < 3:
+            if not _heard_words(transcript):
                 answer_text = strings["voice_retry_prompt"]
             else:
-                async for kind, payload in rag_service.answer_query_stream(
+                answer = rag_service.answer_query_stream(
                     transcript, query_type="voice", session_id=session_id, device_id=device_id
-                ):
-                    if kind == "meta":
-                        meta.update(payload)
-                        meta_sent = True
-                        yield pack_frame(pack_metadata(meta))
-                    elif kind == "sentence":
-                        yield pack_frame(await asyncio.to_thread(sentence_audio, payload))
-                        frames += 1
-                    elif "error" in payload:
-                        logger.warning(f"RAG error for voice query: {payload['error']}")
-                        answer_text = strings["voice_error_prompt"] if frames == 0 else answer_text
-                    else:
-                        answer_text = payload["answer"]
+                )
+                try:
+                    async for kind, payload in answer:
+                        # The board hangs up when the child presses the button mid-answer.
+                        # Closing the answer stops the model, so the next question isn't kept waiting.
+                        if request is not None and await request.is_disconnected():
+                            logger.info("The device hung up mid-answer: stopping it")
+                            return
+                        if kind == "meta":
+                            meta.update(payload)
+                            meta_sent = True
+                            yield pack_frame(pack_metadata(meta))
+                        elif kind == "sentence":
+                            yield pack_frame(await asyncio.to_thread(sentence_audio, payload))
+                            frames += 1
+                        elif "error" in payload:
+                            logger.warning(f"RAG error for voice query: {payload['error']}")
+                            answer_text = strings["voice_error_prompt"] if frames == 0 else answer_text
+                        else:
+                            answer_text = payload["answer"]
+                finally:
+                    await answer.aclose()
         except Exception as e:
             logger.error(f"Streaming voice query failed: {e}")
             if frames == 0:

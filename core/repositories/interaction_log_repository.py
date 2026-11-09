@@ -57,6 +57,13 @@ class InteractionLogRepository(SQLiteRepository):
             if "device_id" not in columns:
                 conn.execute("ALTER TABLE interaction_log ADD COLUMN device_id INTEGER")
                 logger.info("Added device_id column to interaction_log")
+            # Guided lessons: which lesson a turn belongs to, the kind of message, and each
+            # source's match score (for the teacher's lesson results view)
+            for column, kind in (("lesson_progress_id", "INTEGER"), ("message_type", "TEXT"),
+                                 ("source_scores", "TEXT")):
+                if column not in columns:
+                    conn.execute(f"ALTER TABLE interaction_log ADD COLUMN {column} {kind}")
+                    logger.info(f"Added {column} column to interaction_log")
 
             conn.execute(
                 "CREATE INDEX IF NOT EXISTS idx_interaction_log_timestamp "
@@ -79,6 +86,8 @@ class InteractionLogRepository(SQLiteRepository):
         sources: Optional[List[Dict[str, Any]]] = None,
         session_id: Optional[str] = None,
         device_id: Optional[int] = None,
+        lesson_progress_id: Optional[int] = None,
+        message_type: Optional[str] = None,
     ) -> None:
         """Persist one question/answer exchange.
 
@@ -94,6 +103,11 @@ class InteractionLogRepository(SQLiteRepository):
             document_ids = sorted(
                 {s["document_id"] for s in sources if s.get("document_id") is not None}
             )
+            source_scores = [
+                {"chunk_id": s.get("chunk_id"), "document_id": s.get("document_id"),
+                 "similarity": round(float(s["similarity"]), 3)}
+                for s in sources if s.get("similarity") is not None
+            ]
 
             with self.get_connection() as conn:
                 conn.execute(
@@ -101,8 +115,8 @@ class InteractionLogRepository(SQLiteRepository):
                     INSERT INTO interaction_log (
                         query_type, question_text, answer_text,
                         used_general_knowledge, confidence, chunk_ids, document_ids,
-                        session_id, device_id
-                    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+                        session_id, device_id, lesson_progress_id, message_type, source_scores
+                    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                     """,
                     (
                         query_type,
@@ -114,41 +128,76 @@ class InteractionLogRepository(SQLiteRepository):
                         json.dumps(document_ids),
                         session_id,
                         device_id,
+                        lesson_progress_id,
+                        message_type,
+                        json.dumps(source_scores),
                     ),
                 )
                 conn.commit()
         except Exception as e:
             logger.warning(f"Interaction logging failed (non-fatal): {e}")
 
+    async def lesson_turns(self, lesson_progress_id: int) -> List[Dict[str, Any]]:
+        """Every exchange of one lesson, in order, with what each answer was based on."""
+        with self.get_connection() as conn:
+            rows = conn.execute(
+                """SELECT id, timestamp, question_text, answer_text, used_general_knowledge, confidence,
+                          chunk_ids, document_ids, message_type, source_scores
+                   FROM interaction_log WHERE lesson_progress_id = ? ORDER BY id""",
+                (lesson_progress_id,),
+            ).fetchall()
+        turns = []
+        for row in rows:
+            turn = dict(row)
+            for key in ("chunk_ids", "document_ids", "source_scores"):
+                try:
+                    turn[key] = json.loads(turn[key]) if turn[key] else []
+                except ValueError:
+                    turn[key] = []
+            turns.append(turn)
+        return turns
+
     async def get_recent_turns(
-        self, session_id: str, limit: int = 4, max_age_minutes: Optional[int] = None
+        self, session_id: str, limit: int = 4, max_gap_minutes: Optional[int] = None
     ) -> List[Dict[str, str]]:
-        """Most recent turns for a session, oldest first (for prompt context).
+        """The current conversation's latest turns for a session, oldest first.
 
         Only question_text/answer_text are returned - this is conversation
-        memory, not a review export, so it stays minimal. With max_age_minutes,
-        older turns are left out: they belong to an earlier conversation.
+        memory, not a review export, so it stays minimal. With max_gap_minutes,
+        a pause longer than that ends a conversation: the turns before it are
+        left out, and after a long silence nothing is remembered at all. A
+        child who keeps asking every few minutes keeps the whole conversation,
+        up to `limit` turns.
         """
-        age_filter = "AND timestamp >= datetime('now', ?)" if max_age_minutes else ""
-        age_param = (f"-{int(max_age_minutes)} minutes",) if max_age_minutes else ()
         try:
             with self.get_connection() as conn:
                 cursor = conn.execute(
-                    f"""
-                    SELECT question_text, answer_text
+                    """
+                    SELECT question_text, answer_text,
+                           (julianday('now') - julianday(timestamp)) * 1440 AS minutes_ago
                     FROM interaction_log
-                    WHERE session_id = ? {age_filter}
-                    ORDER BY timestamp DESC
+                    WHERE session_id = ?
+                    ORDER BY timestamp DESC, id DESC
                     LIMIT ?
                     """,
-                    (session_id, *age_param, limit),
+                    (session_id, limit),
                 )
-                turns = [dict(row) for row in cursor.fetchall()]
-                turns.reverse()
-                return turns
+                rows = [dict(row) for row in cursor.fetchall()]
         except Exception as e:
             logger.error(f"Failed to load conversation turns for session: {e}")
             return []
+
+        # Newest first: keep turns until the first pause longer than the gap,
+        # counting the pause between the newest turn and now
+        turns, newer_minutes_ago = [], 0.0
+        for row in rows:
+            minutes_ago = row.pop("minutes_ago") or 0.0
+            if max_gap_minutes and minutes_ago - newer_minutes_ago > max_gap_minutes:
+                break
+            turns.append(row)
+            newer_minutes_ago = minutes_ago
+        turns.reverse()
+        return turns
 
     async def get_interaction(self, interaction_id: int) -> Optional[Dict[str, Any]]:
         """Fetch one logged interaction by id, or None."""

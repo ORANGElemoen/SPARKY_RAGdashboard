@@ -214,14 +214,14 @@ static void animator(void*) {
           if (inMood < 160) shift(f, 0, -1);          // little "I'm awake" hop
           break;
         case MOOD_THINKING: {
-          led = (now / 220) % 2 ? 255 : 0;            // blinking
+          led = 15 + ease(now, 1000) * 240 / 255;     // quick smooth pulse: hard blinks mean an error
           static const int8_t path[4][2] = {{0, -1}, {-1, -1}, {0, -1}, {1, -1}};
           const int8_t* p = path[(now / 450) % 4];    // eyes drift around up top
           shift(f, p[0], p[1]);
           break;
         }
         case MOOD_TALKING:
-          led = 180 + talk / 4;
+          led = 15 + talk * talk / 255 * 240 / 255;   // glows with each word, dims in the pauses
           if (talk > 70) shift(f, 0, 1);              // bob with the voice, like a jaw
           break;
         case MOOD_HAPPY:

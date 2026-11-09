@@ -8,6 +8,7 @@ from typing import Dict, Optional
 
 from .device_repository import DeviceRepository
 from .interaction_log_repository import InteractionLogRepository
+from .lesson_repository import LessonRepository
 from .interfaces import IDocumentRepository, IRAGRepository, IVectorSearchRepository
 from .sqlite_repository import SQLiteDocumentRepository
 from .vector_repository import ProductionVectorRepository
@@ -48,6 +49,7 @@ class ProductionRAGRepository(IRAGRepository):
         # docstring for why this is deliberately not stored in the audit DB)
         self._interaction_log = InteractionLogRepository(db_path)
         self._devices = DeviceRepository(db_path)
+        self._lessons = LessonRepository(db_path)
 
         # Initialize chunks and embeddings from the same SQLite connection
         # (These would be implemented similarly to DocumentRepository)
@@ -111,6 +113,11 @@ class ProductionRAGRepository(IRAGRepository):
     def interaction_log(self) -> InteractionLogRepository:
         """Question/answer interaction log, for later manual review"""
         return self._interaction_log
+
+    @property
+    def lessons(self) -> LessonRepository:
+        """Guided lessons and each learner's progress through one"""
+        return self._lessons
 
     @property
     def devices(self) -> DeviceRepository:

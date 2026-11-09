@@ -108,6 +108,15 @@ class DatabaseConfig(BaseModel):
     connection_string: Optional[str] = None
 
 
+def _model_status(model_config: Dict[str, Any], installed_models: List[str]) -> str:
+    """"Available", "Not Downloaded", or for the online Gemini option "Needs API Key"."""
+    if model_config.get("provider") == "gemini":
+        from ..gemini_client import gemini_api_key
+
+        return "Available" if gemini_api_key() else "Needs API Key"
+    return "Available" if any(model_config["name"] in name for name in installed_models) else "Not Downloaded"
+
+
 @router.get("/", response_class=HTMLResponse)
 async def admin_dashboard(request: Request):
     """Main admin dashboard"""
@@ -130,9 +139,7 @@ async def admin_dashboard(request: Request):
             logger.warning(f"Failed to list installed Ollama models: {e}")
 
         for model_key in available_models:
-            model_name = config["models"][model_key]["name"]
-            is_available = any(model_name in name for name in installed_models)
-            model_status[model_key] = "Available" if is_available else "Not Downloaded"
+            model_status[model_key] = _model_status(config["models"][model_key], installed_models)
 
         return templates.TemplateResponse(
             "admin_dashboard.html",
@@ -173,12 +180,8 @@ async def get_available_models():
             logger.warning(f"Failed to list installed Ollama models: {e}")
 
         for model_key, model_config in models.items():
-            is_available = any(
-                model_config["name"] in name for name in installed_models
-            )
-            models[model_key]["status"] = (
-                "available" if is_available else "not_downloaded"
-            )
+            status = _model_status(model_config, installed_models)
+            models[model_key]["status"] = status.lower().replace(" ", "_")
             models[model_key]["is_current"] = model_key == current_model
 
         return {
@@ -210,10 +213,20 @@ async def switch_model(selection: ModelSelection):
 
         # Check if model is available
         model_config = config["models"][selection.model_key]
-        temp_client = OllamaClient()
-        temp_client.model = model_config["name"]
+        if model_config.get("provider") == "gemini":
+            from ..gemini_client import gemini_api_key
 
-        if not temp_client.is_available():
+            if not gemini_api_key():
+                return {
+                    "success": False,
+                    "message": "Gemini needs an API key: add GEMINI_API_KEY=... to the .env file first.",
+                }
+            temp_client = None
+        else:
+            temp_client = OllamaClient()
+            temp_client.model = model_config["name"]
+
+        if temp_client is not None and not temp_client.is_available():
             return {
                 "success": False,
                 "message": f"Model '{selection.model_key}' is not downloaded. Please install it first.",

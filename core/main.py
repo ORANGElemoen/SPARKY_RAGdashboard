@@ -26,6 +26,7 @@ from .routers import (
     device_pack,
     document_manager,
     documents,
+    lessons,
     llm,
     metrics,
     query,
@@ -444,6 +445,7 @@ app.include_router(metrics.router)
 app.include_router(async_processing.router)
 app.include_router(voice.router)
 app.include_router(studio.router)
+app.include_router(lessons.router)
 app.include_router(device_pack.router)
 if PROGRESS_ROUTER_AVAILABLE:
     app.include_router(progress.router)

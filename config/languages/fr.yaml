@@ -157,3 +157,14 @@ maths_correct: "a raison"
 maths_incorrect: "n'a pas encore la bonne réponse"
 # Words the speech recogniser should expect: Sparky's name and common science words
 stt_hotwords: "Sparky herbe science expérience batterie citron gravité"
+
+# Ce que Sparky dit en premier, selon le type de message (question, réponse ou affirmation). Oral seulement.
+openers:
+  question: ["Bonne question !", "Oh, super question !", "Hmm, laisse-moi réfléchir !"]
+  answer: ["D'accord, voyons voir !", "Hmm, voyons voir !"]
+  statement: []
+message_type_notes:
+  question: ""
+  answer: "(L'enfant répond à ce que tu as demandé en dernier. Si c'était une question de quiz avec une bonne réponse, dis-lui gentiment s'il a raison et pourquoi. Si tu lui as demandé ce qu'il veut, par exemple s'il veut en savoir plus, fais simplement ce qu'il a choisi.)"
+  statement: "(L'enfant te raconte quelque chose, il ne pose pas de question. Réponds chaleureusement à ce qu'il a dit.)"
+opener_note: "(Tu as déjà dit « {opener} » à voix haute. Continue directement sans le répéter.)"

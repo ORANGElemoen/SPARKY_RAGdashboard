@@ -1,6 +1,7 @@
 #pragma once
 #include <Arduino.h>
-enum AskResult : uint8_t { ASK_OK, ASK_TOO_SHORT, ASK_NO_WIFI, ASK_SERVER_ERROR };
+enum AskResult : uint8_t { ASK_OK, ASK_TOO_SHORT, ASK_NO_WIFI, ASK_SERVER_ERROR, ASK_INTERRUPTED };
 // Push to talk: records while buttonHeld() is true, sends the question to the tutor server
-// and plays the spoken answer as it streams in. Blocks until Sparky has finished answering.
+// and plays the spoken answer as it streams in. Blocks until Sparky has finished answering,
+// or returns ASK_INTERRUPTED as soon as the button is pressed again while Sparky answers.
 AskResult askQuestion(bool (*buttonHeld)());
