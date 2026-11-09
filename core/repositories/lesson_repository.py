@@ -75,6 +75,24 @@ class LessonRepository(SQLiteRepository):
             conn.execute(
                 "CREATE INDEX IF NOT EXISTS idx_lesson_progress_session ON lesson_progress(session_id, finished_at)"
             )
+            # Each quiz answer: what the learner said, Sparky's mark and how it decided
+            # ("match": the answer's words were said, "ai": the model judged it, "teacher": re-marked)
+            conn.execute(
+                """
+                CREATE TABLE IF NOT EXISTS lesson_answers (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    progress_id INTEGER NOT NULL,
+                    quiz_index INTEGER NOT NULL,
+                    question TEXT,
+                    expected TEXT,
+                    given TEXT,
+                    correct BOOLEAN NOT NULL,
+                    marked_by TEXT,
+                    sparky_correct BOOLEAN,
+                    answered_at DATETIME DEFAULT CURRENT_TIMESTAMP
+                )
+                """
+            )
             conn.commit()
 
     # ------------------------------------------------------------------ lessons
@@ -161,6 +179,29 @@ class LessonRepository(SQLiteRepository):
             ).fetchall()
         return "\n".join(r[0] or "" for r in rows)
 
+    async def chunks(self, chunk_ids: List[int]) -> Dict[int, Dict[str, Any]]:
+        """The sheet passages an answer was based on, with their document's name."""
+        ids = [int(i) for i in chunk_ids if i is not None]
+        if not ids:
+            return {}
+        marks = ",".join("?" * len(ids))
+        with self.get_connection() as conn:
+            rows = conn.execute(
+                f"""SELECT c.id, c.document_id, c.text_content,
+                           COALESCE(d.original_filename, d.filename) AS document_name
+                    FROM chunks c LEFT JOIN documents d ON d.id = c.document_id WHERE c.id IN ({marks})""",
+                ids,
+            ).fetchall()
+        return {r["id"]: dict(r) for r in rows}
+
+    async def document_name(self, document_id: Optional[int]) -> str:
+        if not document_id:
+            return ""
+        with self.get_connection() as conn:
+            row = conn.execute("SELECT COALESCE(original_filename, filename) FROM documents WHERE id = ?",
+                               (document_id,)).fetchone()
+        return row[0] if row else ""
+
     # ------------------------------------------------------------------ progress
     async def active_progress(self, session_id: str, max_idle_minutes: int = 60) -> Optional[Dict[str, Any]]:
         """This learner's unfinished lesson, unless it was left alone longer than max_idle_minutes."""
@@ -224,6 +265,48 @@ class LessonRepository(SQLiteRepository):
                 (outcome, session_id),
             )
             conn.commit()
+
+    async def get_progress(self, progress_id: int) -> Optional[Dict[str, Any]]:
+        with self.get_connection() as conn:
+            row = conn.execute("SELECT * FROM lesson_progress WHERE id = ?", (progress_id,)).fetchone()
+        return dict(row) if row else None
+
+    async def record_answer(self, progress_id: int, quiz_index: int, question: str, expected: str,
+                            given: str, correct: bool, marked_by: str) -> None:
+        with self.get_connection() as conn:
+            conn.execute(
+                """INSERT INTO lesson_answers (progress_id, quiz_index, question, expected, given, correct,
+                                                marked_by, sparky_correct) VALUES (?, ?, ?, ?, ?, ?, ?, ?)""",
+                (progress_id, quiz_index, question, expected, given, 1 if correct else 0, marked_by,
+                 1 if correct else 0),
+            )
+            conn.commit()
+
+    async def list_answers(self, progress_id: int) -> List[Dict[str, Any]]:
+        with self.get_connection() as conn:
+            rows = conn.execute(
+                "SELECT * FROM lesson_answers WHERE progress_id = ? ORDER BY quiz_index, id", (progress_id,)
+            ).fetchall()
+        answers = [dict(r) for r in rows]
+        for a in answers:
+            a["correct"], a["sparky_correct"] = bool(a["correct"]), bool(a["sparky_correct"])
+        return answers
+
+    async def remark_answer(self, progress_id: int, answer_id: int, correct: bool) -> Optional[int]:
+        """The teacher's mark replaces Sparky's (which is kept for comparison). Returns the new score."""
+        with self.get_connection() as conn:
+            cursor = conn.execute(
+                "UPDATE lesson_answers SET correct = ?, marked_by = 'teacher' WHERE id = ? AND progress_id = ?",
+                (1 if correct else 0, answer_id, progress_id),
+            )
+            if cursor.rowcount == 0:
+                return None
+            score = conn.execute(
+                "SELECT COALESCE(SUM(correct), 0) FROM lesson_answers WHERE progress_id = ?", (progress_id,)
+            ).fetchone()[0]
+            conn.execute("UPDATE lesson_progress SET score = ? WHERE id = ?", (score, progress_id))
+            conn.commit()
+        return int(score)
 
     async def list_results(self, limit: int = 200) -> List[Dict[str, Any]]:
         """Lessons learners actually began (not menus), newest first, for the teacher."""

@@ -27,6 +27,12 @@ def _repo() -> LessonRepository:
     return RepositoryFactory.create_production_repository().lessons
 
 
+def _interaction_log():
+    from ..repositories.factory import RepositoryFactory
+
+    return RepositoryFactory.create_production_repository().interaction_log
+
+
 class QuizItem(BaseModel):
     question: str = Field(min_length=1, max_length=300)
     answer: str = Field(min_length=1, max_length=120)
@@ -54,6 +60,10 @@ class LessonBody(BaseModel):
 
 class AvailableBody(BaseModel):
     available: bool
+
+
+class RemarkBody(BaseModel):
+    correct: bool
 
 
 class DraftBody(BaseModel):
@@ -132,3 +142,40 @@ async def delete_lesson(lesson_id: int):
 @router.get("/results")
 async def results():
     return {"results": await _repo().list_results()}
+
+
+@router.get("/results/{progress_id}")
+async def result_detail(progress_id: int):
+    """One lesson attempt: the quiz answers and marks, and every exchange with what it was based on."""
+    repo = _repo()
+    progress = await repo.get_progress(progress_id)
+    if not progress:
+        raise HTTPException(status_code=404, detail="Result not found")
+    lesson = await repo.get_lesson(progress["lesson_id"]) if progress.get("lesson_id") else None
+    turns = await _interaction_log().lesson_turns(progress_id)
+    passages = await repo.chunks([c for t in turns for c in t["chunk_ids"]])
+    for turn in turns:
+        scores = {s.get("chunk_id"): s.get("similarity") for s in turn.pop("source_scores", [])}
+        turn["sources"] = [
+            {"chunk_id": c, "document_name": passages[c]["document_name"], "text": passages[c]["text_content"],
+             "similarity": scores.get(c)}
+            for c in turn.pop("chunk_ids") if c in passages
+        ]
+        turn.pop("document_ids", None)
+        turn["from_lesson"] = turn.get("message_type") == "lesson"
+    return {
+        "progress": progress,
+        "lesson": lesson,
+        "lesson_source": await repo.document_name(lesson.get("source_document_id")) if lesson else "",
+        "answers": await repo.list_answers(progress_id),
+        "turns": turns,
+    }
+
+
+@router.post("/results/{progress_id}/answers/{answer_id}")
+async def remark(progress_id: int, answer_id: int, body: RemarkBody):
+    """The teacher's mark for one quiz answer; the attempt's score is recalculated."""
+    score = await _repo().remark_answer(progress_id, answer_id, body.correct)
+    if score is None:
+        raise HTTPException(status_code=404, detail="Answer not found")
+    return {"score": score}

@@ -351,10 +351,11 @@ class SimpleRAGService:
             return None
 
     @staticmethod
-    def _lesson_response(query: str, text: str) -> Dict[str, Any]:
-        return {"answer": text, "spoken_answer": text, "message_type": "lesson", "sources": [],
+    def _lesson_response(query: str, lesson) -> Dict[str, Any]:
+        """A lesson's next part, said as the teacher approved it (so no sources or match score)."""
+        return {"answer": lesson.reply, "spoken_answer": lesson.reply, "message_type": "lesson", "sources": [],
                 "timestamp": datetime.utcnow().isoformat(), "query": query, "confidence": 1.0,
-                "used_general_knowledge": False}
+                "used_general_knowledge": False, "lesson_progress_id": lesson.progress_id}
 
     async def answer_query(
         self,
@@ -399,7 +400,7 @@ class SimpleRAGService:
             # A guided lesson's next part is said as written, without the model
             lesson = await self._lesson_turn(query, session_id, device_id)
             if lesson and lesson.reply:
-                response = self._lesson_response(query, lesson.reply)
+                response = self._lesson_response(query, lesson)
                 if self.interaction_log_repo:
                     asyncio.create_task(self._log_interaction(query, response, query_type, session_id, device_id))
                 return response
@@ -433,6 +434,7 @@ class SimpleRAGService:
                 "used_general_knowledge": ai_response.get(
                     "used_general_knowledge", False
                 ),
+                "lesson_progress_id": lesson.progress_id if lesson else None,
             }
 
             # 6. Interaction log - fire-and-forget, must never slow down or
@@ -469,6 +471,8 @@ class SimpleRAGService:
                 sources=response.get("sources", []),
                 session_id=session_id,
                 device_id=device_id,
+                lesson_progress_id=response.get("lesson_progress_id"),
+                message_type=response.get("message_type"),
             )
         except Exception as e:
             logger.warning(f"Interaction logging failed: {e}")
@@ -842,7 +846,7 @@ class SimpleRAGService:
             yield ("meta", {"sources": [], "confidence": 1.0, "used_general_knowledge": False})
             for sentence in _split_spoken(lesson.reply):
                 yield ("sentence", sentence)
-            response = self._lesson_response(query, lesson.reply)
+            response = self._lesson_response(query, lesson)
             if self.interaction_log_repo:
                 asyncio.create_task(self._log_interaction(query, response, query_type, session_id, device_id))
             yield ("done", response)
@@ -918,6 +922,7 @@ class SimpleRAGService:
                 "query": query,
                 "confidence": result["confidence"],
                 "used_general_knowledge": result.get("used_general_knowledge", False),
+                "lesson_progress_id": lesson.progress_id if lesson else None,
             }
             if self.interaction_log_repo:
                 asyncio.create_task(self._log_interaction(query, response, query_type, session_id, device_id))
@@ -928,7 +933,9 @@ class SimpleRAGService:
             if not logged and said and self.interaction_log_repo:
                 logger.info(f"Answer cut off after {len(said)} sentence(s): remembering only what was said")
                 partial = {"answer": " ".join(said), "confidence": prep["confidence"],
-                           "sources": prep["sources"], "used_general_knowledge": prep["used_general_knowledge"]}
+                           "sources": prep["sources"], "used_general_knowledge": prep["used_general_knowledge"],
+                           "message_type": message_type,
+                           "lesson_progress_id": lesson.progress_id if lesson else None}
                 asyncio.create_task(self._log_interaction(query, partial, query_type, session_id, device_id))
 
     async def _stream_llm(self, prep: Dict[str, Any], stop: "threading.Event"):

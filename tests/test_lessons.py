@@ -35,7 +35,7 @@ class Marker:
         self.pick, self.mark = pick, mark
 
     def generate_answer(self, query, **kwargs):
-        return self.mark if "Does the child's answer" in query else self.pick
+        return self.mark if "Reply YES if the child" in query else self.pick
 
 
 @pytest.fixture

@@ -50,6 +50,20 @@
         .actions { display: flex; gap: var(--space-3); justify-content: flex-end; margin-top: var(--space-4); }
         .busy { color: var(--color-text-tertiary); font-size: var(--text-sm); }
         @media (max-width: 700px) { .quiz-row { grid-template-columns: 1fr; } }
+        .detail { display: none; margin-top: var(--space-4); padding: var(--space-6); border: 2px solid var(--color-brand-blue); border-radius: var(--radius-lg); }
+        .detail.show { display: block; }
+        .detail h3 { margin-bottom: var(--space-1); }
+        .detail .meta { color: var(--color-text-tertiary); font-size: var(--text-sm); margin-bottom: var(--space-4); }
+        .detail h4 { margin: var(--space-6) 0 var(--space-2); }
+        .mark-right { color: var(--color-success); font-weight: var(--font-semibold); }
+        .mark-wrong { color: var(--color-danger); font-weight: var(--font-semibold); }
+        .how { display: block; color: var(--color-text-tertiary); font-size: var(--text-xs); }
+        .turn { padding: var(--space-3) 0; border-bottom: 1px solid var(--color-border); font-size: var(--text-sm); }
+        .turn .who { font-weight: var(--font-semibold); margin-right: var(--space-2); }
+        .turn .basis { margin-top: var(--space-1); font-size: var(--text-xs); color: var(--color-text-tertiary); }
+        .turn details { margin-top: var(--space-1); font-size: var(--text-xs); }
+        .turn details blockquote { margin: var(--space-2) 0 var(--space-2) var(--space-3); padding-left: var(--space-3); border-left: 3px solid var(--color-border); color: var(--color-text-secondary); white-space: pre-wrap; }
+        tr.clickable { cursor: pointer; }
     </style>
 </head>
 <body>
@@ -133,6 +147,7 @@
             <h2>Results</h2>
             <p class="hint">Lessons learners started, newest first.</p>
             <div id="resultsTable"></div>
+            <div class="detail" id="detail"></div>
         </div>
     </div>
 
@@ -246,15 +261,16 @@
                 }
                 const outcome = { completed: 'Finished', stopped: 'Stopped', replaced: 'Left for another lesson' };
                 const rows = data.results.map(r => `
-                    <tr>
+                    <tr class="clickable" onclick="showResult(${r.id})" title="Click to see this lesson in detail">
                         <td>${escapeHtml(formatTimestamp(r.started_at))}</td>
                         <td>${escapeHtml(r.device_name || 'Browser')}</td>
                         <td>${escapeHtml(r.lesson_title)}</td>
                         <td>${escapeHtml(LEVEL_NAMES[r.level] || r.level || '')}</td>
                         <td>${r.outcome === 'completed' ? `${r.score} / ${r.quiz_total}` : ''}</td>
                         <td>${escapeHtml(r.finished_at ? (outcome[r.outcome] || r.outcome) : 'In progress')}</td>
+                        <td><button class="btn btn-sm">View</button></td>
                     </tr>`).join('');
-                container.innerHTML = `<table><thead><tr><th>Started</th><th>Sparky</th><th>Lesson</th><th>Level</th><th>Quiz score</th><th>Status</th></tr></thead><tbody>${rows}</tbody></table>`;
+                container.innerHTML = `<table><thead><tr><th>Started</th><th>Sparky</th><th>Lesson</th><th>Level</th><th>Quiz score</th><th>Status</th><th></th></tr></thead><tbody>${rows}</tbody></table>`;
             } catch (error) {
                 container.innerHTML = `<div class="error-state">Failed to load results: ${escapeHtml(error.message)}</div>`;
             }
@@ -399,6 +415,93 @@
         document.getElementById('addQuiz').addEventListener('click', () => addQuizRow());
         document.getElementById('saveBtn').addEventListener('click', saveLesson);
         document.getElementById('cancelBtn').addEventListener('click', closeEditor);
+
+        // ------------------------------------------------------------------ one result in detail
+        const HOW = { match: "the answer's words were said", ai: 'judged by the AI', teacher: 'changed by the teacher' };
+        const pct = (x) => x == null ? '?' : `${Math.round(x * 100)}%`;
+
+        function answersTable(p, answers) {
+            if (!answers.length) return '<div class="hint">No quiz answers in this attempt.</div>';
+            const rows = answers.map(a => `
+                <tr>
+                    <td>${a.quiz_index + 1}</td>
+                    <td>${escapeHtml(a.question)}</td>
+                    <td>${escapeHtml(a.expected)}</td>
+                    <td>"${escapeHtml(a.given)}"</td>
+                    <td><span class="${a.correct ? 'mark-right' : 'mark-wrong'}">${a.correct ? 'Right' : 'Wrong'}</span>
+                        <span class="how">${escapeHtml(HOW[a.marked_by] || a.marked_by || '')}${a.marked_by === 'teacher' ? ` (Sparky said ${a.sparky_correct ? 'right' : 'wrong'})` : ''}</span></td>
+                    <td><button class="btn btn-sm" onclick="remark(${p.id}, ${a.id}, ${!a.correct})">Mark ${a.correct ? 'wrong' : 'right'}</button></td>
+                </tr>`).join('');
+            return `<table><thead><tr><th>#</th><th>Question</th><th>Right answer</th><th>Learner said</th><th>Mark</th><th></th></tr></thead><tbody>${rows}</tbody></table>`;
+        }
+
+        function turnHtml(t, lessonSource) {
+            let basis;
+            if (t.from_lesson) {
+                basis = 'From the lesson, as the teacher approved it' + (lessonSource ? ` (drafted from ${escapeHtml(lessonSource)})` : '') + '.';
+            } else if (t.used_general_knowledge || !t.sources.length) {
+                basis = "Sparky's general knowledge: no sheet passage matched the question closely enough (a passage needs a 45% match to be used).";
+            } else {
+                basis = `Based on ${t.sources.length} sheet passage${t.sources.length > 1 ? 's' : ''}, best match ${pct(t.confidence)}.`;
+            }
+            const passages = t.sources.map(s => {
+                const text = s.text || '';
+                return `<div><strong>${escapeHtml(s.document_name)}</strong>, match ${pct(s.similarity)}<blockquote>${escapeHtml(text.slice(0, 700))}${text.length > 700 ? '...' : ''}</blockquote></div>`;
+            }).join('');
+            const sources = t.sources.length ? `<details><summary>Show the passages Sparky used</summary>${passages}</details>` : '';
+            const reply = (t.answer_text || '').split('\n\nSources:')[0];
+            return `
+                <div class="turn">
+                    <div><span class="who">Learner:</span>${escapeHtml(t.question_text)}</div>
+                    <div><span class="who">Sparky:</span>${escapeHtml(reply)}</div>
+                    <div class="basis">${escapeHtml(formatTimestamp(t.timestamp))} &middot; ${basis}</div>
+                    ${sources}
+                </div>`;
+        }
+
+        async function showResult(id) {
+            const box = document.getElementById('detail');
+            try {
+                const response = await fetch(`/admin/lessons/results/${id}`);
+                if (!response.ok) throw new Error(`HTTP ${response.status}`);
+                const d = await response.json();
+                const p = d.progress;
+                const remarked = d.answers.some(a => a.marked_by === 'teacher');
+                const score = p.outcome === 'completed'
+                    ? ` &middot; Score <strong>${p.score} / ${p.quiz_total}</strong>${remarked ? ' (re-marked by the teacher)' : ''}` : '';
+                const turns = d.turns.length
+                    ? d.turns.map(t => turnHtml(t, d.lesson_source)).join('')
+                    : '<div class="hint">No conversation was recorded for this attempt (it was taken before lesson details were saved).</div>';
+                box.innerHTML = `
+                    <div style="display:flex; justify-content:space-between; gap: var(--space-3); align-items:flex-start;">
+                        <div>
+                            <h3>${escapeHtml(p.lesson_title || 'Lesson')}</h3>
+                            <div class="meta">${escapeHtml(formatTimestamp(p.started_at))} &middot; ${escapeHtml(LEVEL_NAMES[p.level] || p.level || '')}${score}</div>
+                        </div>
+                        <button class="btn btn-sm" onclick="document.getElementById('detail').classList.remove('show')">Close</button>
+                    </div>
+                    <h4>Quiz</h4>
+                    <p class="hint">If Sparky marked an answer wrongly, change it here. The score is recalculated, and Sparky's own mark is kept for comparison.</p>
+                    ${answersTable(p, d.answers)}
+                    <h4>How Sparky gave the lesson</h4>
+                    <p class="hint">Every exchange, and what each reply was based on. The match score is how closely a sheet passage matched what the learner said.</p>
+                    ${turns}`;
+                box.classList.add('show');
+                box.scrollIntoView({ behavior: 'smooth', block: 'start' });
+            } catch (error) {
+                alert(`Couldn't load that result: ${error.message}`);
+            }
+        }
+
+        async function remark(progressId, answerId, correct) {
+            try {
+                await send('POST', `/admin/lessons/results/${progressId}/answers/${answerId}`, { correct });
+                await showResult(progressId);
+                loadResults();
+            } catch (error) {
+                alert(`Couldn't change the mark: ${error.message}`);
+            }
+        }
 
         load();
     </script>

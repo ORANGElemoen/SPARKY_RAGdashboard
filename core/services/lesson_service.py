@@ -43,13 +43,16 @@ Question: {question}
 Correct answer: {answer}
 Child's answer: {given}
 
-Does the child's answer mean the same as the correct answer? Reply YES or NO."""
+Reply YES if the child's answer shows the same idea as the correct answer, even in other words or less complete.
+Reply NO if it is wrong, a different idea, or doesn't answer the question.
+Reply with one word: YES or NO."""
 
 
 @dataclass
 class LessonTurn:
     reply: str = ""   # Sparky says this instead of a normal answer
     after: str = ""   # or: Sparky answers the message normally, then says this
+    progress_id: Optional[int] = None   # which lesson attempt this turn belongs to (for the results view)
 
 
 def _words(text: str) -> List[str]:
@@ -82,7 +85,12 @@ class LessonService:
             if _has(words, s.get("lesson_start_words")):
                 return await self._offer(session_id, device_id, s)
             return None
+        turn = await self._continue(progress, query, words, s)
+        if turn is not None:
+            turn.progress_id = progress["id"]
+        return turn
 
+    async def _continue(self, progress, query, words, s) -> Optional[LessonTurn]:
         short = len(words) <= MAX_NAV_WORDS
         if short and _has(words, s.get("lesson_stop_words")):
             await self.repo.finish_progress(progress["id"], "stopped")
@@ -108,12 +116,12 @@ class LessonService:
         lessons = await self.repo.list_lessons(available_only=True, level=level)
         if not lessons:
             return LessonTurn(reply=s["lesson_none"])
-        await self.repo.start_progress(session_id, device_id, "choosing", level=level,
-                                       offered=[x["id"] for x in lessons])
+        progress_id = await self.repo.start_progress(session_id, device_id, "choosing", level=level,
+                                                     offered=[x["id"] for x in lessons])
         if len(lessons) == 1:
-            return LessonTurn(reply=s["lesson_offer_one"].format(title=lessons[0]["title"]))
+            return LessonTurn(reply=s["lesson_offer_one"].format(title=lessons[0]["title"]), progress_id=progress_id)
         return LessonTurn(reply=s["lesson_offer_many"].format(
-            count=len(lessons), titles=self._join([x["title"] for x in lessons], s)))
+            count=len(lessons), titles=self._join([x["title"] for x in lessons], s)), progress_id=progress_id)
 
     async def _choose(self, progress, query, words, s) -> LessonTurn:
         lessons = [x for x in [await self.repo.get_lesson(i) for i in progress["offered"]] if x]
@@ -222,7 +230,9 @@ class LessonService:
         item = quiz[index]
         if short and _has(words, s.get("lesson_repeat_words")) and len(words) <= 2:
             return LessonTurn(reply=s["lesson_question"].format(number=index + 1, question=item["question"]))
-        correct = await self._is_correct(query, words, item)
+        correct, marked_by = await self._is_correct(query, words, item)
+        await self.repo.record_answer(progress["id"], index, item.get("question", ""), item.get("answer", ""),
+                                      query, correct, marked_by)
         score = progress["score"] + (1 if correct else 0)
         if correct:
             feedback = random.choice(s.get("lesson_correct") or ["Correct!"])
@@ -238,16 +248,16 @@ class LessonService:
         wrap = await self._wrap(progress, lesson, score, s)
         return LessonTurn(reply=f"{feedback} {wrap.reply}")
 
-    async def _is_correct(self, query, words, item) -> bool:
-        """Quick check first (the answer's words all said), then the model for anything else."""
+    async def _is_correct(self, query, words, item):
+        """(correct, how): "match" if the answer's words were all said, else the model's "ai" verdict."""
         key = [w for w in _words(item.get("answer", "")) if len(w) >= 2 or w.isdigit()]
         numbers = self._number_words()
         said = {numbers.get(w, w) for w in words}
         if key and all(numbers.get(w, w) in said for w in key):
-            return True
+            return True, "match"
         reply = await self._quick(MARK_PROMPT.format(question=item.get("question", ""),
                                                      answer=item.get("answer", ""), given=query))
-        return (reply or "").strip().upper().startswith("YES")
+        return (reply or "").strip().upper().startswith("YES"), "ai"
 
     def _number_words(self) -> Dict[str, str]:
         """'eight' and '8' count as the same answer (number words come from the language file)."""

@@ -78,3 +78,77 @@ def test_tidy_keeps_the_lesson_format():
                                 "quiz": [{"question": "Q", "answer": ""}, {"question": "Q2", "answer": "A2"}]})
     assert len(tidy["title"]) == 80 and tidy["content"]["outcomes"] == ["a", "b", "c"]
     assert tidy["content"]["quiz"] == [{"question": "Q2", "answer": "A2", "why": ""}]
+
+
+def test_a_result_in_detail_and_re_marking(tmp_path, monkeypatch):
+    """A whole lesson through Sparky, then the teacher's view: quiz marks, sources and re-marking."""
+    import asyncio
+
+    from core.repositories.interaction_log_repository import InteractionLogRepository
+    from core.services import simple_rag_service as rag
+    from core.services.lesson_service import LessonService
+
+    db = str(tmp_path / "all.db")
+    repo, log = LessonRepository(db), InteractionLogRepository(db)
+    with repo.get_connection() as conn:
+        conn.execute("CREATE TABLE documents (id INTEGER PRIMARY KEY, filename TEXT, original_filename TEXT)")
+        conn.execute("CREATE TABLE chunks (id INTEGER PRIMARY KEY, document_id INTEGER, chunk_index INTEGER, text_content TEXT)")
+        conn.execute("INSERT INTO documents VALUES (7, 'f.pdf', 'Lemon Battery.pdf')")
+        conn.execute("INSERT INTO chunks VALUES (41, 7, 0, 'Zinc gives away electrons to the copper.')")
+        conn.commit()
+    two_steps = {**LESSON["content"], "steps": ["Roll the lemons.", "Push in a coin and a nail."]}
+    asyncio.run(repo.save_lesson({**LESSON, "content": two_steps, "available": True, "source_document_id": 7}))
+
+    class OneSheet:
+        async def search_similar_text(self, query, limit, threshold):
+            class Item:
+                id, document_id, text_content = 41, 7, "Zinc gives away electrons to the copper."
+                metadata = {"similarity_score": 0.62, "document_name": "Lemon Battery.pdf"}
+
+            class Result:
+                items = [Item()]
+            return Result()
+
+    class Model:
+        model = "fake"
+
+        def generate_answer(self, query, **kwargs):
+            if "Reply YES if the child" in query:
+                return "NO"
+            return "QUESTION" if "Decide what kind" in query else "Zinc gives electrons away. Can you guess why?"
+
+        def generate_stream(self, prompt, **kwargs):
+            yield "Zinc gives electrons away. Can you guess why?"
+
+    lessons = LessonService(repo, Model(), grade_loader=lambda: "")
+    service = rag.SimpleRAGService(OneSheet(), Model(), log, lessons=lessons)
+
+    async def conversation():
+        for text in ["lesson", "yes", "next", "Why does zinc matter for the battery here?", "next", "next", "brass"]:
+            await service.answer_query(text, query_type="text", session_id="s")
+            await asyncio.sleep(0.05)   # the log is written in the background
+    asyncio.run(conversation())
+
+    monkeypatch.setattr(lessons_router, "_repo", lambda: repo)
+    monkeypatch.setattr(lessons_router, "_interaction_log", lambda: log)
+    app = FastAPI()
+    app.include_router(lessons_router.router)
+    api = TestClient(app)
+
+    progress_id = api.get("/admin/lessons/results").json()["results"][0]["id"]
+    detail = api.get(f"/admin/lessons/results/{progress_id}").json()
+    assert detail["progress"]["score"] == 0 and detail["lesson_source"] == "Lemon Battery.pdf"
+    [answer] = detail["answers"]
+    assert answer["given"] == "brass" and answer["expected"] == "Copper" and answer["marked_by"] == "ai"
+    assert answer["correct"] is False
+
+    turns = detail["turns"]
+    assert [t["question_text"] for t in turns][:2] == ["lesson", "yes"] and turns[0]["from_lesson"]
+    asked = next(t for t in turns if t["question_text"].startswith("Why does zinc"))
+    assert not asked["from_lesson"] and asked["sources"][0]["document_name"] == "Lemon Battery.pdf"
+    assert asked["sources"][0]["similarity"] == 0.62 and "electrons" in asked["sources"][0]["text"]
+
+    remarked = api.post(f"/admin/lessons/results/{progress_id}/answers/{answer['id']}", json={"correct": True}).json()
+    assert remarked["score"] == 1
+    answer = api.get(f"/admin/lessons/results/{progress_id}").json()["answers"][0]
+    assert answer["correct"] is True and answer["marked_by"] == "teacher" and answer["sparky_correct"] is False

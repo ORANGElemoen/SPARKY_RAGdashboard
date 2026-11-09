@@ -57,6 +57,13 @@ class InteractionLogRepository(SQLiteRepository):
             if "device_id" not in columns:
                 conn.execute("ALTER TABLE interaction_log ADD COLUMN device_id INTEGER")
                 logger.info("Added device_id column to interaction_log")
+            # Guided lessons: which lesson a turn belongs to, the kind of message, and each
+            # source's match score (for the teacher's lesson results view)
+            for column, kind in (("lesson_progress_id", "INTEGER"), ("message_type", "TEXT"),
+                                 ("source_scores", "TEXT")):
+                if column not in columns:
+                    conn.execute(f"ALTER TABLE interaction_log ADD COLUMN {column} {kind}")
+                    logger.info(f"Added {column} column to interaction_log")
 
             conn.execute(
                 "CREATE INDEX IF NOT EXISTS idx_interaction_log_timestamp "
@@ -79,6 +86,8 @@ class InteractionLogRepository(SQLiteRepository):
         sources: Optional[List[Dict[str, Any]]] = None,
         session_id: Optional[str] = None,
         device_id: Optional[int] = None,
+        lesson_progress_id: Optional[int] = None,
+        message_type: Optional[str] = None,
     ) -> None:
         """Persist one question/answer exchange.
 
@@ -94,6 +103,11 @@ class InteractionLogRepository(SQLiteRepository):
             document_ids = sorted(
                 {s["document_id"] for s in sources if s.get("document_id") is not None}
             )
+            source_scores = [
+                {"chunk_id": s.get("chunk_id"), "document_id": s.get("document_id"),
+                 "similarity": round(float(s["similarity"]), 3)}
+                for s in sources if s.get("similarity") is not None
+            ]
 
             with self.get_connection() as conn:
                 conn.execute(
@@ -101,8 +115,8 @@ class InteractionLogRepository(SQLiteRepository):
                     INSERT INTO interaction_log (
                         query_type, question_text, answer_text,
                         used_general_knowledge, confidence, chunk_ids, document_ids,
-                        session_id, device_id
-                    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+                        session_id, device_id, lesson_progress_id, message_type, source_scores
+                    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                     """,
                     (
                         query_type,
@@ -114,11 +128,34 @@ class InteractionLogRepository(SQLiteRepository):
                         json.dumps(document_ids),
                         session_id,
                         device_id,
+                        lesson_progress_id,
+                        message_type,
+                        json.dumps(source_scores),
                     ),
                 )
                 conn.commit()
         except Exception as e:
             logger.warning(f"Interaction logging failed (non-fatal): {e}")
+
+    async def lesson_turns(self, lesson_progress_id: int) -> List[Dict[str, Any]]:
+        """Every exchange of one lesson, in order, with what each answer was based on."""
+        with self.get_connection() as conn:
+            rows = conn.execute(
+                """SELECT id, timestamp, question_text, answer_text, used_general_knowledge, confidence,
+                          chunk_ids, document_ids, message_type, source_scores
+                   FROM interaction_log WHERE lesson_progress_id = ? ORDER BY id""",
+                (lesson_progress_id,),
+            ).fetchall()
+        turns = []
+        for row in rows:
+            turn = dict(row)
+            for key in ("chunk_ids", "document_ids", "source_scores"):
+                try:
+                    turn[key] = json.loads(turn[key]) if turn[key] else []
+                except ValueError:
+                    turn[key] = []
+            turns.append(turn)
+        return turns
 
     async def get_recent_turns(
         self, session_id: str, limit: int = 4, max_gap_minutes: Optional[int] = None
