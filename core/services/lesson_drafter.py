@@ -51,8 +51,10 @@ Use only the activity in the SHEET below. Fill in:
 - hook: one exciting sentence that makes a child curious.
 - outcomes: 2 or 3 things the child will learn, each a short phrase that follows "Today you will learn",
   for example "how a lemon can make electricity".
-- steps: 3 to 6 steps for doing the activity, one sentence or two each, in order.
-  Include the grown-up and safety advice from the sheet in the step where it matters.
+- steps: 3 to 6 steps, one sentence or two each, in order. For an experiment sheet, the steps for
+  doing the activity. For a fact sheet, teach one idea per step, simplest first, and make the last
+  step the sheet's "Try it" activity. Include the grown-up and safety advice from the sheet in the
+  step where it matters, and correct any "common mix-ups" the sheet lists.
 - quiz: 3 questions about the lesson with short answers (one to three words) and, in "why",
   one sentence explaining the answer.
 - safety: the sheet's most important safety rule, as one sentence (start with "Remember,").
