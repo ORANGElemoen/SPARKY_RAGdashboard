@@ -323,14 +323,32 @@ class RAGConfig:
 class SimpleRAGService:
     """Clean, professional RAG service - AI answers only"""
 
-    def __init__(self, vector_repo, llm_client, interaction_log_repo=None):
+    def __init__(self, vector_repo, llm_client, interaction_log_repo=None, lessons=None):
         self.vector_repo = vector_repo
         self.llm_client = llm_client
         self.interaction_log_repo = interaction_log_repo
+        self.lessons = lessons  # LessonService: guided lessons, if set up
         self.config = RAGConfig()
         self.cache = ResponseCache()  # Add response caching for performance
 
         logger.info("Simple RAG Service initialized with caching")
+
+    async def _lesson_turn(self, query: str, session_id: Optional[str], device_id: Optional[int]):
+        """The lesson's part of this message (see LessonService), or None if it isn't about a lesson."""
+        if not self.lessons or not session_id:
+            return None
+        try:
+            return await self.lessons.handle(query, session_id, device_id,
+                                             idle_minutes=self.config.conversation_gap_minutes)
+        except Exception as e:
+            logger.error(f"Lesson handling failed, answering normally: {e}")
+            return None
+
+    @staticmethod
+    def _lesson_response(query: str, text: str) -> Dict[str, Any]:
+        return {"answer": text, "spoken_answer": text, "message_type": "lesson", "sources": [],
+                "timestamp": datetime.utcnow().isoformat(), "query": query, "confidence": 1.0,
+                "used_general_knowledge": False}
 
     async def answer_query(
         self,
@@ -372,6 +390,14 @@ class SimpleRAGService:
                     max_gap_minutes=self.config.conversation_gap_minutes,
                 )
 
+            # A guided lesson's next part is said as written, without the model
+            lesson = await self._lesson_turn(query, session_id, device_id)
+            if lesson and lesson.reply:
+                response = self._lesson_response(query, lesson.reply)
+                if self.interaction_log_repo:
+                    asyncio.create_task(self._log_interaction(query, response, query_type, session_id, device_id))
+                return response
+
             # 3. Search for relevant documents, and work out what kind of message this is
             search_results, message_type, opener = await self._understand(
                 query, conversation_history, spoken=query_type == "voice"
@@ -385,6 +411,9 @@ class SimpleRAGService:
             if opener:
                 ai_response = {**ai_response, "text": f"{opener} {ai_response['text']}",
                                "spoken_text": f"{opener} {ai_response.get('spoken_text', ai_response['text'])}"}
+            if lesson and lesson.after:  # a question in the middle of a lesson: then how to carry on
+                ai_response = {**ai_response, "text": f"{ai_response['text']} {lesson.after}",
+                               "spoken_text": f"{ai_response.get('spoken_text', ai_response['text'])} {lesson.after}"}
 
             # 5. Format response
             response = {
@@ -792,13 +821,25 @@ class SimpleRAGService:
                     session_id, limit=self.config.max_conversation_turns,
                     max_gap_minutes=self.config.conversation_gap_minutes,
                 )
-            search_results, message_type, opener = await self._understand(
-                query, history, spoken=query_type == "voice"
-            )
-            prep = self._prepare_answer(query, search_results, history, strings, message_type, opener)
+            lesson = await self._lesson_turn(query, session_id, device_id)
+            if not (lesson and lesson.reply):
+                search_results, message_type, opener = await self._understand(
+                    query, history, spoken=query_type == "voice"
+                )
+                prep = self._prepare_answer(query, search_results, history, strings, message_type, opener)
         except Exception as e:
             logger.error(f"Query processing failed: {e}")
             yield ("done", self._error_response(f"Processing failed: {str(e)}"))
+            return
+
+        if lesson and lesson.reply:  # a guided lesson's next part, said as written
+            yield ("meta", {"sources": [], "confidence": 1.0, "used_general_knowledge": False})
+            for sentence in _split_spoken(lesson.reply):
+                yield ("sentence", sentence)
+            response = self._lesson_response(query, lesson.reply)
+            if self.interaction_log_repo:
+                asyncio.create_task(self._log_interaction(query, response, query_type, session_id, device_id))
+            yield ("done", response)
             return
 
         # If the listener goes away mid-answer (the child pressed the button to ask something
@@ -856,11 +897,15 @@ class SimpleRAGService:
             for sentence in _split_spoken(result["spoken_text"])[len(spoken):]:
                 said.append(sentence)
                 yield ("sentence", sentence)
+            tail = f" {lesson.after}" if lesson and lesson.after else ""  # mid-lesson: how to carry on
+            for sentence in _split_spoken(tail):
+                said.append(sentence)
+                yield ("sentence", sentence)
 
             lead = f"{opener} " if opener else ""
             response = {
-                "answer": lead + result["text"],
-                "spoken_answer": lead + result.get("spoken_text", result["text"]),
+                "answer": lead + result["text"] + tail,
+                "spoken_answer": lead + result.get("spoken_text", result["text"]) + tail,
                 "message_type": message_type,
                 "sources": result["sources"],
                 "timestamp": datetime.utcnow().isoformat(),

@@ -80,8 +80,13 @@ def get_rag_service():
 
         llm_client = make_llm_client(timeout=60)  # 1 minute instead of 3 minutes
 
+        # Guided lessons (the teacher's lessons, and where each learner is in one)
+        from ..services.lesson_service import LessonService
+
+        lessons = LessonService(rag_repo.lessons, llm_client)
+
         # Create simple RAG service
-        return SimpleRAGService(vector_repo, llm_client, interaction_log_repo)
+        return SimpleRAGService(vector_repo, llm_client, interaction_log_repo, lessons=lessons)
 
     except Exception as e:
         logger.error(f"Failed to create RAG service: {e}")
