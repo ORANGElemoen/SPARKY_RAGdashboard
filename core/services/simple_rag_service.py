@@ -117,6 +117,12 @@ def load_language_strings() -> Dict[str, str]:
             with open(strings_path, "r", encoding="utf-8") as f:
                 strings = yaml.safe_load(f) or {}
             merged = dict(DEFAULT_LANGUAGE_STRINGS)
+            # Lesson phrases not yet translated into this language come from English, so
+            # lessons still work (in English) instead of quietly not starting at all
+            english = Path("config/languages/en.yaml")
+            if current_language != "en" and english.exists():
+                with open(english, "r", encoding="utf-8") as f:
+                    merged.update({k: v for k, v in (yaml.safe_load(f) or {}).items() if k.startswith("lesson_")})
             merged.update(strings)
             # Not a real language string - used to keep the response cache key
             # scoped to the language active when the answer was generated, so

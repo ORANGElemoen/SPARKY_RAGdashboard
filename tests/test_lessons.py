@@ -153,3 +153,14 @@ def test_sparky_speaks_the_lesson_without_the_model(setup):
                 if k == "sentence"]
     assert asyncio.run(run("What lessons can I do?")) == rag._split_spoken(S["lesson_offer_one"].format(title="Spider Legs"))
     assert asyncio.run(service.answer_query("yes", query_type="text", session_id="s"))["message_type"] == "lesson"
+
+
+def test_lessons_work_in_a_language_without_lesson_phrases_yet(tmp_path, monkeypatch):
+    (tmp_path / "config" / "languages").mkdir(parents=True)
+    import shutil
+    shutil.copy("config/languages/en.yaml", tmp_path / "config/languages/en.yaml")
+    (tmp_path / "config/languages/xx.yaml").write_text("name: Test\nsources_label: Quellen\n", encoding="utf-8")
+    (tmp_path / "config/language_config.yaml").write_text("current_language: xx\n", encoding="utf-8")
+    monkeypatch.chdir(tmp_path)
+    strings = rag.load_language_strings()
+    assert strings["sources_label"] == "Quellen" and strings["lesson_none"] == S["lesson_none"]

@@ -145,6 +145,22 @@ class LessonRepository(SQLiteRepository):
             conn.commit()
         return cursor.rowcount > 0
 
+    # ------------------------------------------------------------------ source sheets (for drafting)
+    async def list_documents(self) -> List[Dict[str, Any]]:
+        """Uploaded documents a lesson can be drafted from."""
+        with self.get_connection() as conn:
+            rows = conn.execute(
+                "SELECT id, COALESCE(original_filename, filename) AS name FROM documents ORDER BY name"
+            ).fetchall()
+        return [dict(r) for r in rows]
+
+    async def document_text(self, document_id: int) -> str:
+        with self.get_connection() as conn:
+            rows = conn.execute(
+                "SELECT text_content FROM chunks WHERE document_id = ? ORDER BY chunk_index", (document_id,)
+            ).fetchall()
+        return "\n".join(r[0] or "" for r in rows)
+
     # ------------------------------------------------------------------ progress
     async def active_progress(self, session_id: str, max_idle_minutes: int = 60) -> Optional[Dict[str, Any]]:
         """This learner's unfinished lesson, unless it was left alone longer than max_idle_minutes."""

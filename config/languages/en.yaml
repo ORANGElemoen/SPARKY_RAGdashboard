@@ -164,7 +164,7 @@ maths_words:
   operator_phrases: {"divided by": "/", "multiplied by": "*", "take away": "-"}
   joiners: [and]
 # Words the speech recogniser should expect: Sparky's name and common science words
-stt_hotwords: "Sparky grass science experiment battery lemon gravity"
+stt_hotwords: "Sparky lesson grass science experiment battery lemon gravity"
 
 # The first thing Sparky says out loud, by the kind of message the child said (the server's
 # AI check decides: question, answer or statement). An empty list says nothing extra.

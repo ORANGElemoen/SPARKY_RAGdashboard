@@ -1,0 +1,406 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Lessons - Sparky Admin</title>
+    <link rel="icon" type="image/png" href="/static/images/sparky/icon.png">
+    <link rel="stylesheet" href="/static/theme.css">
+    <style>
+        body { padding: var(--space-6); }
+        .admin-container { max-width: 1200px; margin: 0 auto; background: var(--color-surface); border-radius: var(--radius-xl); box-shadow: var(--shadow-lg); overflow: hidden; }
+        .admin-header { background: linear-gradient(160deg, var(--color-ink) 0%, var(--color-ink-soft) 100%); color: white; padding: var(--space-8) var(--space-8) var(--space-6); text-align: center; position: relative; overflow: hidden; }
+        .admin-header::before { content: ""; position: absolute; inset: 0; background: radial-gradient(60% 90% at 50% -10%, rgba(245, 130, 31, 0.35), transparent 70%); pointer-events: none; }
+        .admin-header h1 { display: inline-flex; align-items: center; gap: var(--space-3); font-size: var(--text-2xl); margin-bottom: var(--space-2); position: relative; }
+        .admin-header h1 .icon { color: var(--color-brand-blue); }
+        .admin-header p { opacity: 0.75; font-size: var(--text-sm); position: relative; }
+        .nav-links { margin-top: var(--space-5); display: flex; gap: var(--space-2); justify-content: center; position: relative; flex-wrap: wrap; }
+        .nav-links a { display: inline-flex; align-items: center; gap: var(--space-2); background: rgba(255,255,255,0.08); border: 1px solid var(--color-ink-border); color: white; padding: 9px 16px; border-radius: var(--radius-full); text-decoration: none; font-size: var(--text-sm); font-weight: var(--font-medium); }
+        .nav-links a:hover { background: rgba(255,255,255,0.16); color: white; }
+        .admin-content { padding: var(--space-8); }
+        h2 { font-size: var(--text-lg); margin: var(--space-8) 0 var(--space-3); }
+        h2:first-child { margin-top: 0; }
+        .hint { color: var(--color-text-tertiary); font-size: var(--text-sm); margin-bottom: var(--space-4); }
+        .level-banner { padding: var(--space-3) var(--space-4); margin-bottom: var(--space-6); background: var(--color-surface-alt); border: 1px solid var(--color-border); border-radius: var(--radius-md); font-size: var(--text-sm); }
+        .toolbar { display: flex; flex-wrap: wrap; gap: var(--space-3); align-items: center; margin-bottom: var(--space-6); padding: var(--space-4); background: var(--color-surface-alt); border: 1px solid var(--color-border); border-radius: var(--radius-md); }
+        .toolbar select { width: auto; flex: 1; min-width: 200px; }
+        .toolbar .level-select { flex: 0 0 auto; min-width: 150px; }
+        table { width: 100%; border-collapse: collapse; }
+        th, td { text-align: left; padding: var(--space-3) var(--space-4); font-size: var(--text-sm); border-bottom: 1px solid var(--color-border); vertical-align: middle; }
+        th { color: var(--color-text-tertiary); font-weight: var(--font-medium); text-transform: uppercase; font-size: var(--text-xs); letter-spacing: 0.04em; }
+        tr:hover td { background: var(--color-surface-alt); }
+        .empty-state, .error-state { text-align: center; padding: var(--space-8); color: var(--color-text-tertiary); }
+        .error-state { color: var(--color-danger); }
+        .badge + .badge { margin-left: 4px; }
+        .switch { display: inline-flex; align-items: center; gap: var(--space-2); cursor: pointer; }
+        .switch input { width: 18px; height: 18px; cursor: pointer; }
+        .editor { display: none; margin-bottom: var(--space-6); padding: var(--space-6); border: 2px solid var(--color-brand-blue); border-radius: var(--radius-lg); background: var(--color-surface); }
+        .editor.show { display: block; }
+        .editor h3 { margin-bottom: var(--space-4); }
+        .field { margin-bottom: var(--space-4); }
+        .field label { display: block; font-weight: var(--font-medium); font-size: var(--text-sm); margin-bottom: var(--space-1); }
+        .field small { display: block; color: var(--color-text-tertiary); font-size: var(--text-xs); margin-top: 2px; }
+        .field textarea { min-height: 70px; }
+        .field textarea.tall { min-height: 150px; }
+        .row { display: flex; gap: var(--space-4); flex-wrap: wrap; }
+        .row > .field { flex: 1; min-width: 220px; }
+        .checks { display: flex; gap: var(--space-4); flex-wrap: wrap; padding-top: 6px; }
+        .checks label { display: inline-flex; align-items: center; gap: 6px; font-weight: normal; }
+        .quiz-row { display: grid; grid-template-columns: 2fr 1fr 2fr auto; gap: var(--space-2); margin-bottom: var(--space-2); }
+        .actions { display: flex; gap: var(--space-3); justify-content: flex-end; margin-top: var(--space-4); }
+        .busy { color: var(--color-text-tertiary); font-size: var(--text-sm); }
+        @media (max-width: 700px) { .quiz-row { grid-template-columns: 1fr; } }
+    </style>
+</head>
+<body>
+    <svg style="display:none" aria-hidden="true">
+      <symbol id="icon-book" viewBox="0 0 24 24"><path d="M4 5.5A1.5 1.5 0 0 1 5.5 4H11v16H5.5A1.5 1.5 0 0 1 4 18.5z"/><path d="M20 5.5A1.5 1.5 0 0 0 18.5 4H13v16h5.5a1.5 1.5 0 0 0 1.5-1.5z"/></symbol>
+      <symbol id="icon-settings" viewBox="0 0 24 24"><circle cx="12" cy="12" r="3"/><path d="M12 2v3M12 19v3M4.2 4.2l2.1 2.1M17.7 17.7l2.1 2.1M2 12h3M19 12h3M4.2 19.8l2.1-2.1M17.7 6.3l2.1-2.1"/></symbol>
+      <symbol id="icon-home" viewBox="0 0 24 24"><path d="M4 11.5 12 4l8 7.5"/><path d="M6 10v9a1 1 0 0 0 1 1h4v-6h2v6h4a1 1 0 0 0 1-1v-9"/></symbol>
+      <symbol id="icon-spark" viewBox="0 0 24 24"><path d="M12 3v4M12 17v4M3 12h4M17 12h4M6 6l2.5 2.5M15.5 15.5 18 18M6 18l2.5-2.5M15.5 8.5 18 6"/></symbol>
+      <symbol id="icon-plus" viewBox="0 0 24 24"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></symbol>
+      <symbol id="icon-trash" viewBox="0 0 24 24"><path d="M4 6.5h16"/><path d="M8.5 6.5V5a1.5 1.5 0 0 1 1.5-1.5h4A1.5 1.5 0 0 1 15.5 5v1.5"/><path d="M6.5 6.5 7.3 19a1.5 1.5 0 0 0 1.5 1.4h6.4a1.5 1.5 0 0 0 1.5-1.4l.8-12.5"/></symbol>
+      <symbol id="icon-edit" viewBox="0 0 24 24"><path d="M4 20h4L19 9l-4-4L4 16z"/></symbol>
+    </svg>
+
+    <div class="admin-container">
+        <div class="admin-header">
+            <h1><svg class="icon"><use href="#icon-book"/></svg> Sparky Lessons</h1>
+            <p>Guided lessons a learner starts by saying "lesson" to Sparky</p>
+            <div class="nav-links">
+                <a href="/admin/"><svg class="icon"><use href="#icon-settings"/></svg> Admin Home</a>
+                <a href="/admin/studio/view"><svg class="icon"><use href="#icon-spark"/></svg> Sparky Studio</a>
+                <a href="/"><svg class="icon"><use href="#icon-home"/></svg> Main UI</a>
+            </div>
+        </div>
+
+        <div class="admin-content">
+            <div class="level-banner" id="levelBanner">Loading...</div>
+
+            <h2>Make a lesson</h2>
+            <p class="hint">Choose a sheet and the AI drafts a lesson from it in about 10 seconds. Nothing is offered to learners until you've checked it and switched it on.</p>
+            <div class="toolbar">
+                <select id="draftDoc" class="input" aria-label="Sheet to draft from"></select>
+                <select id="draftLevel" class="input level-select" aria-label="Level">
+                    <option value="easy">Easy (Grade R-3)</option>
+                    <option value="intermediate" selected>Intermediate (Grade 4-6)</option>
+                    <option value="advanced">Advanced (Grade 7+)</option>
+                </select>
+                <button id="draftBtn" class="btn btn-primary"><svg class="icon"><use href="#icon-spark"/></svg> Draft with AI</button>
+                <button id="blankBtn" class="btn"><svg class="icon"><use href="#icon-plus"/></svg> Blank lesson</button>
+                <span id="draftBusy" class="busy"></span>
+            </div>
+
+            <div class="editor" id="editor">
+                <h3 id="editorTitle">Lesson</h3>
+                <div class="row">
+                    <div class="field"><label for="fTitle">Title</label><input id="fTitle" class="input" maxlength="80"><small>Sparky offers lessons by title, so keep it short and easy to say.</small></div>
+                    <div class="field"><label for="fTopic">Topic</label><input id="fTopic" class="input" maxlength="40"></div>
+                </div>
+                <div class="row">
+                    <div class="field"><label>For which levels</label>
+                        <div class="checks">
+                            <label><input type="checkbox" class="fLevel" value="easy"> Easy (R-3)</label>
+                            <label><input type="checkbox" class="fLevel" value="intermediate"> Intermediate (4-6)</label>
+                            <label><input type="checkbox" class="fLevel" value="advanced"> Advanced (7+)</label>
+                        </div>
+                    </div>
+                    <div class="field"><label>Offer to learners</label>
+                        <div class="checks"><label><input type="checkbox" id="fAvailable"> Sparky may offer this lesson</label></div>
+                    </div>
+                </div>
+                <div class="field"><label for="fHook">Hook</label><textarea id="fHook" class="input" maxlength="400"></textarea><small>One exciting sentence to start with.</small></div>
+                <div class="field"><label for="fOutcomes">What learners will learn (one per line)</label><textarea id="fOutcomes" class="input"></textarea><small>Each line follows "Today you will learn ...", e.g. "how a lemon can make electricity".</small></div>
+                <div class="field"><label for="fSteps">Steps (one per line)</label><textarea id="fSteps" class="input tall"></textarea><small>Sparky says one step at a time and waits for "next". Include "do this with a grown-up" where it matters.</small></div>
+                <div class="field"><label>Quiz (up to 5; easy lessons use the first 2)</label>
+                    <div id="quizRows"></div>
+                    <button type="button" id="addQuiz" class="btn btn-sm"><svg class="icon"><use href="#icon-plus"/></svg> Add a question</button>
+                    <small>Keep answers short (a word or two). Sparky accepts answers that mean the same thing.</small>
+                </div>
+                <div class="row">
+                    <div class="field"><label for="fSafety">Safety line</label><textarea id="fSafety" class="input" maxlength="400"></textarea><small>Said at the start of the lesson.</small></div>
+                    <div class="field"><label for="fRecap">Recap</label><textarea id="fRecap" class="input" maxlength="400"></textarea><small>Said with the score at the end.</small></div>
+                </div>
+                <div class="actions">
+                    <button id="cancelBtn" class="btn">Cancel</button>
+                    <button id="saveBtn" class="btn btn-primary">Save lesson</button>
+                </div>
+            </div>
+
+            <h2>Lessons</h2>
+            <div id="lessonsTable"></div>
+
+            <h2>Results</h2>
+            <p class="hint">Lessons learners started, newest first.</p>
+            <div id="resultsTable"></div>
+        </div>
+    </div>
+
+    <script>
+        const LEVEL_NAMES = { easy: 'Easy (R-3)', intermediate: 'Intermediate (4-6)', advanced: 'Advanced (7+)' };
+        let editing = null;   // the lesson being edited: {id, source_document_id}
+
+        async function getCsrfToken() {
+            const response = await fetch('/api/v1/csrf-token');
+            const data = await response.json();
+            return data.csrf_token;
+        }
+
+        function escapeHtml(text) {
+            const div = document.createElement('div');
+            div.textContent = text == null ? '' : String(text);
+            return div.innerHTML;
+        }
+
+        function formatTimestamp(ts) {
+            if (!ts) return '';
+            const iso = ts.includes('T') ? ts : ts.replace(' ', 'T') + 'Z';
+            const d = new Date(iso);
+            return isNaN(d.getTime()) ? ts : d.toLocaleString();
+        }
+
+        async function send(method, url, body) {
+            const response = await fetch(url, {
+                method,
+                headers: { 'Content-Type': 'application/json', 'X-CSRF-Token': await getCsrfToken() },
+                body: body === undefined ? undefined : JSON.stringify(body),
+            });
+            const data = await response.json().catch(() => ({}));
+            if (!response.ok) {
+                const detail = Array.isArray(data.detail) ? data.detail.map(d => d.msg).join('; ') : data.detail;
+                throw new Error(detail || `HTTP ${response.status}`);
+            }
+            return data;
+        }
+
+        // ------------------------------------------------------------------ list
+        async function load() {
+            try {
+                const response = await fetch('/admin/lessons');
+                if (!response.ok) throw new Error(`HTTP ${response.status}`);
+                const data = await response.json();
+                showLevel(data);
+                showDocuments(data.documents);
+                showLessons(data.lessons, data.level);
+            } catch (error) {
+                document.getElementById('lessonsTable').innerHTML = `<div class="error-state">Failed to load lessons: ${escapeHtml(error.message)}</div>`;
+            }
+            loadResults();
+        }
+
+        function showLevel(data) {
+            const banner = document.getElementById('levelBanner');
+            banner.innerHTML = data.grade
+                ? `Class grade <strong>${escapeHtml(data.grade)}</strong>, so Sparky offers the switched-on lessons marked <strong>${escapeHtml(LEVEL_NAMES[data.level] || data.level)}</strong>. Change the grade on <a href="/admin/">Admin Home</a>.`
+                : `No class grade is set, so Sparky offers every switched-on lesson. Set the grade on <a href="/admin/">Admin Home</a> to offer only lessons for that level.`;
+        }
+
+        function showDocuments(documents) {
+            const select = document.getElementById('draftDoc');
+            const keep = select.value;
+            select.innerHTML = '';
+            (documents || []).forEach(d => {
+                const option = document.createElement('option');
+                option.value = d.id;
+                option.textContent = d.name;
+                select.append(option);
+            });
+            if (keep) select.value = keep;
+            document.getElementById('draftBtn').disabled = !(documents || []).length;
+        }
+
+        let lessonsById = {};
+        function showLessons(lessons, classLevel) {
+            const container = document.getElementById('lessonsTable');
+            lessonsById = Object.fromEntries((lessons || []).map(l => [l.id, l]));
+            if (!lessons || !lessons.length) {
+                container.innerHTML = '<div class="empty-state">No lessons yet. Draft one from a sheet above.</div>';
+                return;
+            }
+            const rows = lessons.map(l => {
+                const levels = l.levels.map(x => `<span class="badge ${x === classLevel ? 'badge-success' : ''}">${escapeHtml(LEVEL_NAMES[x] || x)}</span>`).join('');
+                const quiz = (l.content.quiz || []).length, steps = (l.content.steps || []).length;
+                return `
+                    <tr>
+                        <td><strong>${escapeHtml(l.title)}</strong><br><small style="color:var(--color-text-tertiary)">${escapeHtml(l.topic)}</small></td>
+                        <td>${levels}</td>
+                        <td>${steps} steps, ${quiz} questions</td>
+                        <td><label class="switch"><input type="checkbox" ${l.available ? 'checked' : ''} onchange="setAvailable(${l.id}, this)"> ${l.available ? 'On offer' : 'Off'}</label></td>
+                        <td><div style="display:flex; gap: var(--space-2); justify-content: flex-end;">
+                            <button class="btn btn-sm" onclick="editLesson(${l.id})"><svg class="icon"><use href="#icon-edit"/></svg> Edit</button>
+                            <button class="btn btn-sm btn-danger" onclick="deleteLesson(${l.id})"><svg class="icon"><use href="#icon-trash"/></svg> Delete</button>
+                        </div></td>
+                    </tr>`;
+            }).join('');
+            container.innerHTML = `<table><thead><tr><th>Lesson</th><th>Levels</th><th>Content</th><th>Learners</th><th></th></tr></thead><tbody>${rows}</tbody></table>`;
+        }
+
+        async function loadResults() {
+            const container = document.getElementById('resultsTable');
+            try {
+                const response = await fetch('/admin/lessons/results');
+                const data = await response.json();
+                if (!data.results || !data.results.length) {
+                    container.innerHTML = '<div class="empty-state">No lessons taken yet.</div>';
+                    return;
+                }
+                const outcome = { completed: 'Finished', stopped: 'Stopped', replaced: 'Left for another lesson' };
+                const rows = data.results.map(r => `
+                    <tr>
+                        <td>${escapeHtml(formatTimestamp(r.started_at))}</td>
+                        <td>${escapeHtml(r.device_name || 'Browser')}</td>
+                        <td>${escapeHtml(r.lesson_title)}</td>
+                        <td>${escapeHtml(LEVEL_NAMES[r.level] || r.level || '')}</td>
+                        <td>${r.outcome === 'completed' ? `${r.score} / ${r.quiz_total}` : ''}</td>
+                        <td>${escapeHtml(r.finished_at ? (outcome[r.outcome] || r.outcome) : 'In progress')}</td>
+                    </tr>`).join('');
+                container.innerHTML = `<table><thead><tr><th>Started</th><th>Sparky</th><th>Lesson</th><th>Level</th><th>Quiz score</th><th>Status</th></tr></thead><tbody>${rows}</tbody></table>`;
+            } catch (error) {
+                container.innerHTML = `<div class="error-state">Failed to load results: ${escapeHtml(error.message)}</div>`;
+            }
+        }
+
+        async function setAvailable(id, box) {
+            try {
+                await send('POST', `/admin/lessons/${id}/available`, { available: box.checked });
+                load();
+            } catch (error) {
+                box.checked = !box.checked;
+                alert(`Couldn't change it: ${error.message}`);
+            }
+        }
+
+        async function deleteLesson(id) {
+            const lesson = lessonsById[id];
+            if (!confirm(`Delete the lesson "${lesson ? lesson.title : id}"? This can't be undone.`)) return;
+            try {
+                await send('DELETE', `/admin/lessons/${id}`);
+                if (editing && editing.id === id) closeEditor();
+                load();
+            } catch (error) {
+                alert(`Couldn't delete it: ${error.message}`);
+            }
+        }
+
+        // ------------------------------------------------------------------ editor
+        function addQuizRow(item = {}) {
+            const rows = document.getElementById('quizRows');
+            if (rows.children.length >= 5) return;
+            const row = document.createElement('div');
+            row.className = 'quiz-row';
+            const make = (cls, placeholder, value, max) => {
+                const input = document.createElement('input');
+                input.className = `input ${cls}`;
+                input.placeholder = placeholder;
+                input.maxLength = max;
+                input.value = value || '';
+                return input;
+            };
+            const remove = document.createElement('button');
+            remove.type = 'button';
+            remove.className = 'btn btn-sm';
+            remove.textContent = 'Remove';
+            remove.onclick = () => row.remove();
+            row.append(make('qQuestion', 'Question', item.question, 300), make('qAnswer', 'Answer', item.answer, 120),
+                       make('qWhy', 'Why (said after marking)', item.why, 400), remove);
+            rows.append(row);
+        }
+
+        function openEditor(lesson, heading) {
+            editing = { id: lesson.id || null, source_document_id: lesson.source_document_id || null };
+            const c = lesson.content || {};
+            document.getElementById('editorTitle').textContent = heading;
+            document.getElementById('fTitle').value = lesson.title || '';
+            document.getElementById('fTopic').value = lesson.topic || '';
+            const levels = lesson.levels && lesson.levels.length ? lesson.levels : ['easy', 'intermediate', 'advanced'];
+            document.querySelectorAll('.fLevel').forEach(box => { box.checked = levels.includes(box.value); });
+            document.getElementById('fAvailable').checked = !!lesson.available;
+            document.getElementById('fHook').value = c.hook || '';
+            document.getElementById('fOutcomes').value = (c.outcomes || []).join('\n');
+            document.getElementById('fSteps').value = (c.steps || []).join('\n');
+            document.getElementById('fSafety').value = c.safety || '';
+            document.getElementById('fRecap').value = c.recap || '';
+            document.getElementById('quizRows').innerHTML = '';
+            (c.quiz && c.quiz.length ? c.quiz : [{}, {}, {}]).forEach(addQuizRow);
+            const editor = document.getElementById('editor');
+            editor.classList.add('show');
+            editor.scrollIntoView({ behavior: 'smooth', block: 'start' });
+        }
+
+        function closeEditor() {
+            editing = null;
+            document.getElementById('editor').classList.remove('show');
+        }
+
+        function editLesson(id) {
+            const lesson = lessonsById[id];
+            if (lesson) openEditor(lesson, `Edit: ${lesson.title}`);
+        }
+
+        const lines = (id) => document.getElementById(id).value.split('\n').map(s => s.trim()).filter(Boolean);
+
+        async function saveLesson() {
+            const quiz = [...document.querySelectorAll('#quizRows .quiz-row')].map(row => ({
+                question: row.querySelector('.qQuestion').value.trim(),
+                answer: row.querySelector('.qAnswer').value.trim(),
+                why: row.querySelector('.qWhy').value.trim(),
+            })).filter(q => q.question || q.answer);
+            if (quiz.some(q => !q.question || !q.answer)) {
+                alert('Each quiz question needs both a question and an answer (or remove the row).');
+                return;
+            }
+            const body = {
+                id: editing && editing.id,
+                source_document_id: editing && editing.source_document_id,
+                title: document.getElementById('fTitle').value.trim(),
+                topic: document.getElementById('fTopic').value.trim(),
+                levels: [...document.querySelectorAll('.fLevel:checked')].map(b => b.value),
+                available: document.getElementById('fAvailable').checked,
+                content: {
+                    hook: document.getElementById('fHook').value.trim(),
+                    outcomes: lines('fOutcomes'),
+                    steps: lines('fSteps'),
+                    quiz,
+                    safety: document.getElementById('fSafety').value.trim(),
+                    recap: document.getElementById('fRecap').value.trim(),
+                },
+            };
+            if (!body.title) { alert('Give the lesson a title.'); return; }
+            if (!body.content.steps.length) { alert('Add at least one step.'); return; }
+            try {
+                await send('POST', '/admin/lessons', body);
+                closeEditor();
+                load();
+            } catch (error) {
+                alert(`Couldn't save the lesson: ${error.message}`);
+            }
+        }
+
+        document.getElementById('draftBtn').addEventListener('click', async () => {
+            const busy = document.getElementById('draftBusy');
+            const button = document.getElementById('draftBtn');
+            button.disabled = true;
+            busy.textContent = 'Drafting... about 10 seconds';
+            try {
+                const draft = await send('POST', '/admin/lessons/draft', {
+                    document_id: Number(document.getElementById('draftDoc').value),
+                    level: document.getElementById('draftLevel').value,
+                });
+                openEditor({ ...draft, available: false }, 'New lesson (AI draft: please check it)');
+                busy.textContent = '';
+            } catch (error) {
+                busy.textContent = '';
+                alert(error.message);
+            } finally {
+                button.disabled = false;
+            }
+        });
+        document.getElementById('blankBtn').addEventListener('click', () => openEditor({}, 'New lesson'));
+        document.getElementById('addQuiz').addEventListener('click', () => addQuizRow());
+        document.getElementById('saveBtn').addEventListener('click', saveLesson);
+        document.getElementById('cancelBtn').addEventListener('click', closeEditor);
+
+        load();
+    </script>
+</body>
+</html>
