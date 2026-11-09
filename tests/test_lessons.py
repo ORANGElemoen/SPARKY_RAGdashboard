@@ -10,7 +10,7 @@ from core.services.lesson_service import LessonService
 S = rag.load_language_strings()
 
 SPIDER = {
-    "title": "Spider Legs", "topic": "animals", "levels": ["easy", "intermediate"], "available": True,
+    "title": "Spider Legs", "topic": "Biology", "levels": ["easy", "intermediate"], "available": True,
     "content": {
         "hook": "Did you know spiders are not insects?",
         "outcomes": ["how many legs a spider has", "why spiders are not insects"],
@@ -24,9 +24,10 @@ SPIDER = {
         "recap": "Spiders have eight legs and are not insects.",
     },
 }
-VOLCANO = {**SPIDER, "title": "Volcano Eruptions", "levels": ["advanced"],
+VOLCANO = {**SPIDER, "title": "Volcano Eruptions", "topic": "Earth", "levels": ["advanced"],
            "content": {**SPIDER["content"], "hook": "Volcanoes are mountains that can erupt."}}
-EGG = {**SPIDER, "title": "Floating Egg", "levels": ["easy", "intermediate", "advanced"], "available": False}
+EGG = {**SPIDER, "title": "Floating Egg", "topic": "Forces", "levels": ["easy", "intermediate", "advanced"],
+       "available": False}
 
 
 class Marker:
@@ -61,8 +62,9 @@ def test_ordinary_questions_are_not_lessons(setup):
 
 def test_a_whole_lesson(setup):
     svc = LessonService(setup, Marker(), grade_loader=lambda: "5")    # Grade 5: intermediate
-    offer = say(svc, "Sparky, what lessons can I do?").reply
-    assert offer == S["lesson_offer_one"].format(title="Spider Legs")  # volcano is advanced, egg not on offer
+    subjects = say(svc, "Sparky, what lessons can I do?").reply
+    assert subjects == S["lesson_offer_categories"].format(categories="Biology")  # volcano: advanced; egg: off
+    assert say(svc, "Biology please").reply == S["lesson_offer_one"].format(title="Spider Legs")
 
     intro = say(svc, "Yes please!").reply
     assert "Did you know spiders are not insects?" in intro and "Never touch a real spider." in intro
@@ -93,6 +95,7 @@ def test_a_whole_lesson(setup):
 def test_easy_lessons_ask_fewer_questions(setup):
     svc = LessonService(setup, Marker(), grade_loader=lambda: "2")
     say(svc, "lesson")
+    say(svc, "biology")
     say(svc, "yes")
     say(svc, "next")
     say(svc, "next")
@@ -102,20 +105,27 @@ def test_easy_lessons_ask_fewer_questions(setup):
 
 
 def test_choosing_between_lessons_by_title_or_by_the_model(setup):
-    asyncio.run(setup.set_available(3, True))                      # the egg is on offer too
+    asyncio.run(setup.set_available(3, True))                      # the egg (Forces) is on offer too
     svc = LessonService(setup, Marker(pick="2"), grade_loader=lambda: "5")
-    offer = say(svc, "let's do a lesson").reply
-    assert "Floating Egg" in offer and "Spider Legs" in offer
-    assert "spiders are not insects" in say(svc, "the spider one").reply
+    subjects = say(svc, "let's do a lesson").reply
+    assert subjects == S["lesson_offer_categories"].format(categories="Biology and Forces")
+    assert "spiders are not insects" in say(svc, "the spider one").reply   # a lesson by name, straight away
 
-    say(svc, "stop", session="other")                                # nothing to stop: not a lesson turn
+    assert say(svc, "stop", session="other") is None                    # nothing to stop: not a lesson turn
     say(svc, "lesson", session="other")
-    assert "spiders are not insects" in say(svc, "the second one", session="other").reply   # the model picked 2
+    listed = say(svc, "the second one", session="other").reply           # the model picked subject 2
+    assert listed == S["lesson_offer_one"].format(title="Floating Egg")
+    back = say(svc, "go back", session="other").reply                    # changed their mind
+    assert back == S["lesson_offer_categories"].format(categories="Biology and Forces")
+    assert say(svc, "forces", session="other").reply == listed
+    started = say(svc, "can I do spider legs instead", session="other").reply   # a lesson from another subject
+    assert "spiders are not insects" in started
 
 
 def test_stopping_a_lesson(setup):
     svc = LessonService(setup, Marker(), grade_loader=lambda: "5")
     say(svc, "lesson")
+    say(svc, "biology")
     say(svc, "yes")
     assert say(svc, "stop the lesson").reply == S["lesson_stopped"]
     assert say(svc, "next") is None
@@ -151,8 +161,9 @@ def test_sparky_speaks_the_lesson_without_the_model(setup):
     async def run(text):
         return [p async for k, p in service.answer_query_stream(text, query_type="voice", session_id="s")
                 if k == "sentence"]
-    assert asyncio.run(run("What lessons can I do?")) == rag._split_spoken(S["lesson_offer_one"].format(title="Spider Legs"))
-    assert asyncio.run(service.answer_query("yes", query_type="text", session_id="s"))["message_type"] == "lesson"
+    assert asyncio.run(run("What lessons can I do?")) == rag._split_spoken(
+        S["lesson_offer_categories"].format(categories="Biology"))
+    assert asyncio.run(service.answer_query("biology", query_type="text", session_id="s"))["message_type"] == "lesson"
 
 
 def test_lessons_work_in_a_language_without_lesson_phrases_yet(tmp_path, monkeypatch):
@@ -164,3 +175,33 @@ def test_lessons_work_in_a_language_without_lesson_phrases_yet(tmp_path, monkeyp
     monkeypatch.chdir(tmp_path)
     strings = rag.load_language_strings()
     assert strings["sources_label"] == "Quellen" and strings["lesson_none"] == S["lesson_none"]
+
+
+
+def test_a_question_mid_lesson_searches_the_lessons_own_sheet_first():
+    """'Why do the metals have to be different?' matched the lemon sheet at only 34% on its own."""
+
+    class Search:
+        def __init__(self):
+            self.calls = []
+
+        async def search_similar_text(self, query, limit, threshold):
+            self.calls.append((query, limit))
+
+            class Item:
+                id, document_id, text_content = 9, 3, "Zinc and copper are different metals."
+                metadata = {"similarity_score": 0.62 if query.startswith("Lemon Battery:") else 0.34}
+
+            class Result:
+                items = [Item()]
+            return Result()
+
+    from core.services.lesson_service import LessonTurn
+
+    search = Search()
+    service = rag.SimpleRAGService(search, NoModel(), None)
+    lesson = LessonTurn(after="say next", source_document_id=3, lesson_title="Lemon Battery")
+    found = asyncio.run(service._search_for("Why do the metals have to be different?", [], lesson))
+    assert [r["chunk_id"] for r in found] == [9] and found[0]["similarity"] == 0.62
+    assert search.calls[-1][0] == "Lemon Battery: Why do the metals have to be different?"
+    assert asyncio.run(service._search_for("Why do the metals have to be different?", [], None)) == []

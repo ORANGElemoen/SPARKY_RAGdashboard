@@ -29,13 +29,13 @@ MAX_NAV_WORDS = 5          # "next", "I'm done", "say that again": longer messag
 EASY_QUIZ_QUESTIONS = 2    # easy lessons ask fewer questions
 MAX_QUIZ_QUESTIONS = 5
 
-PICK_PROMPT = """A child was offered these lessons and replied. Which lesson did the child choose?
+PICK_PROMPT = """A child was offered these choices and replied. Which one did the child choose?
 
 {options}
 
 Child said: {message}
 
-Reply with the lesson's number only, or 0 if the child chose none of them."""
+Reply with its number only, or 0 if the child chose none of them."""
 
 MARK_PROMPT = """A child answered a quiz question out loud. Speech recognition may have misspelt some words.
 
@@ -53,6 +53,9 @@ class LessonTurn:
     reply: str = ""   # Sparky says this instead of a normal answer
     after: str = ""   # or: Sparky answers the message normally, then says this
     progress_id: Optional[int] = None   # which lesson attempt this turn belongs to (for the results view)
+    # For a question asked mid-lesson: the lesson's sheet is searched first, so the answer stays on it
+    source_document_id: Optional[int] = None
+    lesson_title: str = ""
 
 
 def _words(text: str) -> List[str]:
@@ -96,6 +99,8 @@ class LessonService:
             await self.repo.finish_progress(progress["id"], "stopped")
             return LessonTurn(reply=s["lesson_stopped"])
         stage = progress["stage"]
+        if stage == "choosing_category":
+            return await self._choose_category(progress, query, words, s)
         if stage == "choosing":
             return await self._choose(progress, query, words, s)
         lesson = await self.repo.get_lesson(progress["lesson_id"]) if progress.get("lesson_id") else None
@@ -111,37 +116,111 @@ class LessonService:
         return None
 
     # ------------------------------------------------------------------ choosing a lesson
+    def _category(self, lesson, s) -> str:
+        """A lesson's subject (its "topic"); lessons without one are grouped as "other things"."""
+        return (lesson.get("topic") or "").strip() or s.get("lesson_other_category", "other things")
+
+    def _categories(self, lessons, s) -> List[str]:
+        """Every subject with a lesson on offer, in alphabetical order, each named once."""
+        names = {}
+        for x in lessons:
+            names.setdefault(self._category(x, s).lower(), self._category(x, s))
+        return [names[k] for k in sorted(names)]
+
+    async def _available(self, progress) -> List[Dict[str, Any]]:
+        """The lessons on offer for this learner's level right now."""
+        return await self.repo.list_lessons(available_only=True, level=progress.get("level") or "")
+
     async def _offer(self, session_id, device_id, s) -> LessonTurn:
+        """'What lessons can I do?': the subjects that have lessons on offer, then the lessons in one."""
         level = level_for_grade(self.grade())
         lessons = await self.repo.list_lessons(available_only=True, level=level)
         if not lessons:
             return LessonTurn(reply=s["lesson_none"])
-        progress_id = await self.repo.start_progress(session_id, device_id, "choosing", level=level,
+        progress_id = await self.repo.start_progress(session_id, device_id, "choosing_category", level=level,
                                                      offered=[x["id"] for x in lessons])
-        if len(lessons) == 1:
-            return LessonTurn(reply=s["lesson_offer_one"].format(title=lessons[0]["title"]), progress_id=progress_id)
-        return LessonTurn(reply=s["lesson_offer_many"].format(
-            count=len(lessons), titles=self._join([x["title"] for x in lessons], s)), progress_id=progress_id)
+        return LessonTurn(reply=self._list_categories(lessons, s, s["lesson_offer_categories"]),
+                          progress_id=progress_id)
 
-    async def _choose(self, progress, query, words, s) -> LessonTurn:
-        lessons = [x for x in [await self.repo.get_lesson(i) for i in progress["offered"]] if x]
+    def _list_categories(self, lessons, s, template) -> str:
+        return template.format(categories=self._join(self._categories(lessons, s), s))
+
+    def _list_lessons(self, lessons, s) -> str:
+        if len(lessons) == 1:
+            return s["lesson_offer_one"].format(title=lessons[0]["title"])
+        return s["lesson_offer_many"].format(count=len(lessons), titles=self._join([x["title"] for x in lessons], s))
+
+    async def _show_category(self, progress, lessons, category, s) -> LessonTurn:
+        subset = [x for x in lessons if self._category(x, s).lower() == category.lower()]
+        await self.repo.update_progress(progress["id"], stage="choosing", offered=[x["id"] for x in subset])
+        return LessonTurn(reply=self._list_lessons(subset, s))
+
+    async def _choose_category(self, progress, query, words, s) -> LessonTurn:
+        lessons = await self._available(progress)
         if not lessons:
             await self.repo.finish_progress(progress["id"], "stopped")
             return LessonTurn(reply=s["lesson_none"])
+        chosen = self._match_title(words, lessons)          # naming a lesson starts it straight away
+        if chosen:
+            return await self._begin(progress, chosen, s)
+        categories = self._categories(lessons, s)
+        category = self._match_name(words, categories) or await self._ask_which_name(query, categories)
+        if category:
+            return await self._show_category(progress, lessons, category, s)
+        if len(words) <= MAX_NAV_WORDS and _has(words, s.get("lesson_no_words")):
+            await self.repo.finish_progress(progress["id"], "stopped")
+            return LessonTurn(reply=s["lesson_not_now"])
+        return LessonTurn(reply=self._list_categories(lessons, s, s["lesson_which_category"]))
+
+    @staticmethod
+    def _match_name(words, names) -> Optional[str]:
+        """A subject said by name ('space' won't match 'Astronomy': the model handles that)."""
+        said = set(words)
+        for name in names:
+            if set(_words(name)) & said:
+                return name
+        return None
+
+    async def _ask_which_name(self, query, names) -> Optional[str]:
+        reply = await self._quick(PICK_PROMPT.format(
+            options="\n".join(f"{i}. {n}" for i, n in enumerate(names, 1)), message=query))
+        number = re.search(r"\d+", reply or "")
+        if number and 1 <= int(number.group()) <= len(names):
+            return names[int(number.group()) - 1]
+        return None
+
+    async def _choose(self, progress, query, words, s) -> LessonTurn:
+        """The lessons of one subject were listed: the learner picks one, or changes their mind."""
+        everything = await self._available(progress)
+        listed = [x for x in everything if x["id"] in progress["offered"]]
+        if not everything:
+            await self.repo.finish_progress(progress["id"], "stopped")
+            return LessonTurn(reply=s["lesson_none"])
         short = len(words) <= MAX_NAV_WORDS
-        if len(lessons) == 1 and short:
+        if short and _has(words, s.get("lesson_back_words")):     # "go back", "other subjects"
+            await self.repo.update_progress(progress["id"], stage="choosing_category",
+                                            offered=[x["id"] for x in everything])
+            return LessonTurn(reply=self._list_categories(everything, s, s["lesson_offer_categories"]))
+        if len(listed) == 1 and short:
             if _has(words, s.get("lesson_no_words")):
                 await self.repo.finish_progress(progress["id"], "stopped")
                 return LessonTurn(reply=s["lesson_not_now"])
             if _has(words, s.get("lesson_next_words")):
-                return await self._begin(progress, lessons[0], s)
-        chosen = self._match_title(words, lessons) or await self._ask_which(query, lessons)
+                return await self._begin(progress, listed[0], s)
+        # A lesson named from this subject, or from any other one
+        chosen = self._match_title(words, listed) or self._match_title(words, everything)
+        if chosen:
+            return await self._begin(progress, chosen, s)
+        category = self._match_name(words, self._categories(everything, s))   # another subject by name
+        if category:
+            return await self._show_category(progress, everything, category, s)
+        chosen = await self._ask_which(query, listed) if listed else None    # "the second one"
         if chosen:
             return await self._begin(progress, chosen, s)
         if short and _has(words, s.get("lesson_no_words")):
             await self.repo.finish_progress(progress["id"], "stopped")
             return LessonTurn(reply=s["lesson_not_now"])
-        return LessonTurn(reply=s["lesson_which"].format(titles=self._join([x["title"] for x in lessons], s)))
+        return LessonTurn(reply=s["lesson_which"].format(titles=self._join([x["title"] for x in listed], s)))
 
     @staticmethod
     def _match_title(words, lessons) -> Optional[Dict[str, Any]]:
@@ -191,7 +270,7 @@ class LessonService:
             return LessonTurn(reply=self._intro(lesson, s))
         if short and _has(words, s.get("lesson_next_words")):
             return await self._show_step(progress, lesson, 0, s)
-        return LessonTurn(after=s["lesson_after_question"])
+        return self._question(lesson, s)
 
     async def _steps(self, progress, lesson, words, short, s) -> LessonTurn:
         index = progress["step_index"]
@@ -203,7 +282,13 @@ class LessonService:
             if index + 1 < len(lesson["content"].get("steps") or []):
                 return await self._show_step(progress, lesson, index + 1, s)
             return await self._start_quiz(progress, lesson, s)
-        return LessonTurn(after=s["lesson_after_question"])
+        return self._question(lesson, s)
+
+    @staticmethod
+    def _question(lesson, s) -> LessonTurn:
+        """Not a lesson command: Sparky answers it (from this lesson's sheet first), then how to carry on."""
+        return LessonTurn(after=s["lesson_after_question"], source_document_id=lesson.get("source_document_id"),
+                          lesson_title=lesson.get("title", ""))
 
     async def _show_step(self, progress, lesson, index, s) -> LessonTurn:
         steps = lesson["content"].get("steps") or []

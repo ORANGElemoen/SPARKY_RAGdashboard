@@ -194,6 +194,13 @@ lesson_none: "I don't have any lessons ready right now. Ask your teacher to choo
 lesson_offer_one: "I have a lesson for you about {title}. Shall we start?"
 lesson_offer_many: "I have {count} lessons for you: {titles}. Which one would you like?"
 lesson_which: "Which one would you like? I have {titles}."
+# 'What lessons can I do?': Sparky lists the subjects (each lesson's category) that have lessons on
+# offer, then the lessons in the one picked. Lessons without a category count as lesson_other_category.
+lesson_offer_categories: "I have lessons about {categories}. Which subject would you like?"
+lesson_which_category: "Which subject would you like? I have lessons about {categories}."
+lesson_other_category: "other things"
+# "Go back" while lessons are listed: back to the subjects
+lesson_back_words: ["back", "subjects", "subject", "categories", "category", "different"]
 lesson_not_now: "Okay, no lesson for now. Just say lesson whenever you want one!"
 lesson_intro: "Let's start the lesson about {title}! {hook}"
 lesson_outcomes: "Today you will learn {outcomes}."

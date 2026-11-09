@@ -109,7 +109,12 @@
                 <h3 id="editorTitle">Lesson</h3>
                 <div class="row">
                     <div class="field"><label for="fTitle">Title</label><input id="fTitle" class="input" maxlength="80"><small>Sparky offers lessons by title, so keep it short and easy to say.</small></div>
-                    <div class="field"><label for="fTopic">Topic</label><input id="fTopic" class="input" maxlength="40"></div>
+                    <div class="field"><label for="fTopic">Category</label><input id="fTopic" class="input" maxlength="40" list="categoryList">
+                        <datalist id="categoryList">
+                            <option value="Biology"><option value="Astronomy"><option value="Mathematics"><option value="Engineering">
+                            <option value="Electricity"><option value="Sound"><option value="Chemistry"><option value="Forces"><option value="Weather">
+                        </datalist>
+                        <small>The subject Sparky groups it under ("Which subject would you like?"). Pick one or type your own.</small></div>
                 </div>
                 <div class="row">
                     <div class="field"><label>For which levels</label>
@@ -232,12 +237,18 @@
                 container.innerHTML = '<div class="empty-state">No lessons yet. Draft one from a sheet above.</div>';
                 return;
             }
-            const rows = lessons.map(l => {
+            const category = (l) => (l.topic || '').trim() || 'No category';
+            const ordered = [...lessons].sort((a, b) => category(a).localeCompare(category(b)) || a.title.localeCompare(b.title));
+            let current = null;
+            const rows = ordered.map(l => {
                 const levels = l.levels.map(x => `<span class="badge ${x === classLevel ? 'badge-success' : ''}">${escapeHtml(LEVEL_NAMES[x] || x)}</span>`).join('');
                 const quiz = (l.content.quiz || []).length, steps = (l.content.steps || []).length;
-                return `
+                const heading = category(l) !== current
+                    ? `<tr><td colspan="5" style="background:var(--color-surface-alt); font-weight:var(--font-semibold); padding-top:var(--space-4)">${escapeHtml(category(l))}</td></tr>` : '';
+                current = category(l);
+                return `${heading}
                     <tr>
-                        <td><strong>${escapeHtml(l.title)}</strong><br><small style="color:var(--color-text-tertiary)">${escapeHtml(l.topic)}</small></td>
+                        <td><strong>${escapeHtml(l.title)}</strong></td>
                         <td>${levels}</td>
                         <td>${steps} steps, ${quiz} questions</td>
                         <td><label class="switch"><input type="checkbox" ${l.available ? 'checked' : ''} onchange="setAvailable(${l.id}, this)"> ${l.available ? 'On offer' : 'Off'}</label></td>

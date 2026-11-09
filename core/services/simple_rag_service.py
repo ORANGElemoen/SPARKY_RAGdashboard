@@ -255,6 +255,10 @@ Reply SAME if the message only makes sense with the earlier conversation, or is 
 Reply NEW if it asks about something else, even a science topic.
 Reply with one word: SAME or NEW."""
 
+# A question asked during a lesson is very likely about that lesson, so passages from the lesson's
+# own sheet are used from a lower match than the usual RAG_SIMILARITY_THRESHOLD (0.45)
+LESSON_SHEET_THRESHOLD = float(os.getenv("RAG_LESSON_SHEET_THRESHOLD", "0.30"))
+
 # What kind of message the child said, so Sparky doesn't say "Good question!" to an answer
 MESSAGE_TYPES = ("question", "answer", "statement")
 MESSAGE_TYPE_PROMPT = """A child is talking to Sparky, a science tutor robot. Decide what kind of message the child just said.
@@ -407,7 +411,7 @@ class SimpleRAGService:
 
             # 3. Search for relevant documents, and work out what kind of message this is
             search_results, message_type, opener = await self._understand(
-                query, conversation_history, spoken=query_type == "voice"
+                query, conversation_history, spoken=query_type == "voice", lesson=lesson
             )
 
             # 4. Generate AI answer (grounded in documents if any were found,
@@ -580,11 +584,23 @@ class SimpleRAGService:
             return "question"
         return "answer" if last_reply.endswith("?") else "statement"
 
-    async def _understand(self, query: str, history: List[Dict[str, str]], spoken: bool):
+    async def _search_for(self, query: str, history: List[Dict[str, str]], lesson=None) -> List[Dict[str, Any]]:
+        """The sheet search; for a question asked mid-lesson, that lesson's own sheet comes first."""
+        results = await self._search_with_history(query, history)
+        sheet = getattr(lesson, "source_document_id", None)
+        if sheet and not any(r["document_id"] == sheet for r in results):
+            found = await self._search_documents(f"{lesson.lesson_title}: {query}",
+                                                 threshold=LESSON_SHEET_THRESHOLD, only_document=sheet)
+            if found:
+                logger.info(f"Mid-lesson question: using {len(found)} passage(s) from the lesson's own sheet")
+            results = (found + results)[: self.config.max_results]
+        return results
+
+    async def _understand(self, query: str, history: List[Dict[str, str]], spoken: bool, lesson=None):
         """Search the sheets and classify the message at the same time. Returns
         (search_results, message_type, opener); the opener is only for spoken answers."""
         search_results, message_type = await asyncio.gather(
-            self._search_with_history(query, history), self._classify_message(query, history)
+            self._search_for(query, history, lesson), self._classify_message(query, history)
         )
         opener = ""
         if spoken:
@@ -593,13 +609,15 @@ class SimpleRAGService:
         logger.info(f"Message type: {message_type}{f', opener: {opener!r}' if opener else ''}")
         return search_results, message_type, opener
 
-    async def _search_documents(self, query: str) -> List[Dict[str, Any]]:
-        """Search for relevant documents"""
+    async def _search_documents(self, query: str, threshold: Optional[float] = None,
+                                only_document: Optional[int] = None) -> List[Dict[str, Any]]:
+        """Search for relevant documents (optionally only one document, with its own threshold)"""
+        threshold = self.config.similarity_threshold if threshold is None else threshold
         try:
-            # Get search results
+            # Get search results; for one document, look further down the list to find its passages
             search_results = await self.vector_repo.search_similar_text(
                 query=query,
-                limit=self.config.max_results,
+                limit=self.config.max_results if only_document is None else 30,
                 threshold=0.01,  # Very low threshold, we'll filter later
             )
 
@@ -610,8 +628,10 @@ class SimpleRAGService:
             relevant_results = []
             for item in search_results.items:
                 similarity = item.metadata.get("similarity_score", 0.0)
+                if only_document is not None and item.document_id != only_document:
+                    continue
 
-                if similarity >= self.config.similarity_threshold:
+                if similarity >= threshold:
                     relevant_results.append(
                         {
                             "text": item.text_content,
@@ -623,10 +643,8 @@ class SimpleRAGService:
                         }
                     )
 
-            logger.info(
-                f"Found {len(relevant_results)} relevant documents (threshold: {self.config.similarity_threshold})"
-            )
-            return relevant_results
+            logger.info(f"Found {len(relevant_results)} relevant documents (threshold: {threshold})")
+            return relevant_results[: self.config.max_results]
 
         except Exception as e:
             logger.error(f"Document search failed: {e}")
@@ -834,7 +852,7 @@ class SimpleRAGService:
             lesson = await self._lesson_turn(query, session_id, device_id)
             if not (lesson and lesson.reply):
                 search_results, message_type, opener = await self._understand(
-                    query, history, spoken=query_type == "voice"
+                    query, history, spoken=query_type == "voice", lesson=lesson
                 )
                 prep = self._prepare_answer(query, search_results, history, strings, message_type, opener)
         except Exception as e:

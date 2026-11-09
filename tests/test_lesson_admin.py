@@ -124,7 +124,8 @@ def test_a_result_in_detail_and_re_marking(tmp_path, monkeypatch):
     service = rag.SimpleRAGService(OneSheet(), Model(), log, lessons=lessons)
 
     async def conversation():
-        for text in ["lesson", "yes", "next", "Why does zinc matter for the battery here?", "next", "next", "brass"]:
+        for text in ["lesson", "electricity", "yes", "next", "Why does zinc matter for the battery here?",
+                     "next", "next", "brass"]:
             await service.answer_query(text, query_type="text", session_id="s")
             await asyncio.sleep(0.05)   # the log is written in the background
     asyncio.run(conversation())
@@ -143,7 +144,7 @@ def test_a_result_in_detail_and_re_marking(tmp_path, monkeypatch):
     assert answer["correct"] is False
 
     turns = detail["turns"]
-    assert [t["question_text"] for t in turns][:2] == ["lesson", "yes"] and turns[0]["from_lesson"]
+    assert [t["question_text"] for t in turns][:3] == ["lesson", "electricity", "yes"] and turns[0]["from_lesson"]
     asked = next(t for t in turns if t["question_text"].startswith("Why does zinc"))
     assert not asked["from_lesson"] and asked["sources"][0]["document_name"] == "Lemon Battery.pdf"
     assert asked["sources"][0]["similarity"] == 0.62 and "electrons" in asked["sources"][0]["text"]
