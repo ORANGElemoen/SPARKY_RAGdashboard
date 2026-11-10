@@ -801,68 +801,84 @@ class SimpleRAGService:
             yield ("done", self._error_response(f"Processing failed: {str(e)}"))
             return
 
-        yield ("meta", {k: prep[k] for k in ("sources", "confidence", "used_general_knowledge")})
-        if opener:
-            yield ("sentence", opener)  # spoken while the model is still writing the answer
+        # If the listener goes away mid-answer (the child pressed the button to ask something
+        # else), the caller closes this generator: the model then stops writing, and only what
+        # was actually handed out to be spoken is remembered.
+        stop, said, logged = threading.Event(), [], False
+        try:
+            yield ("meta", {k: prep[k] for k in ("sources", "confidence", "used_general_knowledge")})
+            if opener:
+                said.append(opener)
+                yield ("sentence", opener)  # spoken while the model is still writing the answer
 
-        model = getattr(self.llm_client, "model", "")
-        cached = self.cache.get(prep["prompt"], "", extra=model) if prep["cacheable"] else None
-        spoken: List[str] = []
-        if cached:
-            result = cached
-        else:
-            text, refused, stop, used = "", False, threading.Event(), 0
-            try:
-                async for chunk in self._stream_llm(prep, stop):
-                    text += chunk
-                    finished = [x.strip() for x in _SENTENCE_RE.split(text)[:-1] if x.strip()]
-                    # This might be the closing question, which a safety line has to go before
-                    if prep.get("must_say") and finished and finished[-1].endswith("?"):
-                        finished = finished[:-1]
-                    for sentence in finished[used:]:
-                        used += 1
-                        # The model's own "Good question!" after Sparky already said an opener
-                        if not spoken and opener and _is_repeated_opener(sentence, strings):
-                            continue
-                        # A canned refusal shows in the first sentence: stop and redirect instead
-                        if not spoken and _soften_refusal(sentence, strings) != sentence:
-                            refused = True
-                            break
-                        spoken.append(sentence)
-                        yield ("sentence", sentence)
-                    if refused:
-                        stop.set()
-                        break
-            except Exception as e:
-                logger.error(f"Streaming answer failed: {e}")
-                text = " ".join(spoken)  # keep what was already said
-            if refused:
-                result = self._finish_answer(strings["safety_redirect"], {**prep, "must_say": None}, strings)
-            elif not text and not spoken:
-                result = self._finish_answer("", prep, strings)
+            model = getattr(self.llm_client, "model", "")
+            cached = self.cache.get(prep["prompt"], "", extra=model) if prep["cacheable"] else None
+            spoken: List[str] = []
+            if cached:
+                result = cached
             else:
-                result = self._finish_answer(text, prep, strings)
-                if prep["cacheable"]:
-                    self.cache.set(prep["prompt"], "", result, extra=model)
+                text, refused, used = "", False, 0
+                try:
+                    async for chunk in self._stream_llm(prep, stop):
+                        text += chunk
+                        finished = [x.strip() for x in _SENTENCE_RE.split(text)[:-1] if x.strip()]
+                        # This might be the closing question, which a safety line has to go before
+                        if prep.get("must_say") and finished and finished[-1].endswith("?"):
+                            finished = finished[:-1]
+                        for sentence in finished[used:]:
+                            used += 1
+                            # The model's own "Good question!" after Sparky already said an opener
+                            if not spoken and opener and _is_repeated_opener(sentence, strings):
+                                continue
+                            # A canned refusal shows in the first sentence: stop and redirect instead
+                            if not spoken and _soften_refusal(sentence, strings) != sentence:
+                                refused = True
+                                break
+                            spoken.append(sentence)
+                            said.append(sentence)
+                            yield ("sentence", sentence)
+                        if refused:
+                            stop.set()
+                            break
+                except Exception as e:
+                    logger.error(f"Streaming answer failed: {e}")
+                    text = " ".join(spoken)  # keep what was already said
+                if refused:
+                    result = self._finish_answer(strings["safety_redirect"], {**prep, "must_say": None}, strings)
+                elif not text and not spoken:
+                    result = self._finish_answer("", prep, strings)
+                else:
+                    result = self._finish_answer(text, prep, strings)
+                    if prep["cacheable"]:
+                        self.cache.set(prep["prompt"], "", result, extra=model)
 
-        # Whatever the finished answer has beyond what was already said (or all of it, from the cache)
-        for sentence in _split_spoken(result["spoken_text"])[len(spoken):]:
-            yield ("sentence", sentence)
+            # Whatever the finished answer has beyond what was already said (or all of it, from the cache)
+            for sentence in _split_spoken(result["spoken_text"])[len(spoken):]:
+                said.append(sentence)
+                yield ("sentence", sentence)
 
-        lead = f"{opener} " if opener else ""
-        response = {
-            "answer": lead + result["text"],
-            "spoken_answer": lead + result.get("spoken_text", result["text"]),
-            "message_type": message_type,
-            "sources": result["sources"],
-            "timestamp": datetime.utcnow().isoformat(),
-            "query": query,
-            "confidence": result["confidence"],
-            "used_general_knowledge": result.get("used_general_knowledge", False),
-        }
-        if self.interaction_log_repo:
-            asyncio.create_task(self._log_interaction(query, response, query_type, session_id, device_id))
-        yield ("done", response)
+            lead = f"{opener} " if opener else ""
+            response = {
+                "answer": lead + result["text"],
+                "spoken_answer": lead + result.get("spoken_text", result["text"]),
+                "message_type": message_type,
+                "sources": result["sources"],
+                "timestamp": datetime.utcnow().isoformat(),
+                "query": query,
+                "confidence": result["confidence"],
+                "used_general_knowledge": result.get("used_general_knowledge", False),
+            }
+            if self.interaction_log_repo:
+                asyncio.create_task(self._log_interaction(query, response, query_type, session_id, device_id))
+            logged = True
+            yield ("done", response)
+        finally:
+            stop.set()
+            if not logged and said and self.interaction_log_repo:
+                logger.info(f"Answer cut off after {len(said)} sentence(s): remembering only what was said")
+                partial = {"answer": " ".join(said), "confidence": prep["confidence"],
+                           "sources": prep["sources"], "used_general_knowledge": prep["used_general_knowledge"]}
+                asyncio.create_task(self._log_interaction(query, partial, query_type, session_id, device_id))
 
     async def _stream_llm(self, prep: Dict[str, Any], stop: "threading.Event"):
         """The LLM's text, piece by piece, from a worker thread (generation blocks)."""

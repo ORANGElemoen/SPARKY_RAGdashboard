@@ -134,3 +134,51 @@ def test_text_chat_keeps_the_models_own_words():
     service = rag.SimpleRAGService(NoDocuments(), RepeatsOpener("QUESTION"), interaction_log_repo=History([]))
     result = asyncio.run(service.answer_query("Why is the sky blue?", query_type="text", session_id="s"))
     assert result["answer"].startswith("Great question!")  # no opener was spoken, so nothing to repeat
+
+
+class SlowLLM(FakeLLM):
+    """Writes a long answer slowly and records whether it was told to stop."""
+    def __init__(self):
+        super().__init__("QUESTION")
+        self.stopped = False
+
+    def generate_stream(self, prompt, max_tokens=600, temperature=0.4, stop=None):
+        import time
+        for i in range(50):
+            if stop is not None and stop.is_set():
+                self.stopped = True
+                return
+            time.sleep(0.02)
+            yield f"Sentence number {i}. "
+
+
+class Remembers(History):
+    def __init__(self):
+        super().__init__([])
+        self.logged = []
+
+    async def log_interaction(self, **kwargs):
+        self.logged.append(kwargs)
+
+
+def test_a_cut_off_answer_stops_the_model_and_remembers_only_what_was_said():
+    llm, log = SlowLLM(), Remembers()
+    service = rag.SimpleRAGService(NoDocuments(), llm, interaction_log_repo=log)
+
+    async def run():
+        answer = service.answer_query_stream("Why is the sky blue?", query_type="voice", session_id="s")
+        said = []
+        async for kind, payload in answer:
+            if kind == "sentence":
+                said.append(payload)
+                if len(said) == 3:  # the opener and two sentences, then the child presses the button
+                    break
+        await answer.aclose()
+        await asyncio.sleep(0.3)  # the worker thread notices the stop; the log task runs
+        return said
+
+    said = asyncio.run(run())
+    assert llm.stopped
+    assert len(log.logged) == 1
+    assert log.logged[0]["answer_text"] == " ".join(said)
+    assert "Sentence number 5" not in log.logged[0]["answer_text"]

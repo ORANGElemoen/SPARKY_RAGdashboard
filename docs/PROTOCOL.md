@@ -129,6 +129,13 @@ on the server).
 - Use the summary's `frame_count` to check that every sentence arrived.
 - The transcript-too-short and error cases still send metadata, the spoken
   retry/error prompt, then the summary.
+- The first sentence is usually an opener chosen for the kind of message
+  ("Good question!" for a question, nothing for a statement), so the device
+  plays no "thinking" line of its own.
+- **Interrupting:** the device may close the connection at any point, which
+  Sparky does when the button is pressed mid-answer. The server notices before
+  the next sentence, stops the model, and remembers only the sentences already
+  sent, so the next question isn't kept waiting.
 
 `Accept: application/x-tutor-voice; version=2; codec=mulaw` sends each sentence
 as a 16 kHz G.711 mu-law WAV (format tag 7 at byte 20, 8 bits, still a 44-byte

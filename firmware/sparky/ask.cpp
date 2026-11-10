@@ -4,6 +4,8 @@
 // The recording goes to LittleFS (8 s = 256 KB is too much RAM next to Wi-Fi), already
 // wrapped in the multipart body, so the upload is one file stream. While it uploads and
 // the server thinks, the "button_release" voice line ("Hmm, let me think!") plays.
+// Pressing the button while Sparky answers stops the answer at once (ASK_INTERRUPTED), so the
+// child can ask something else straight away.
 #include "ask.h"
 #include "config.h"
 #include "faces.h"
@@ -74,6 +76,32 @@ static volatile bool receiving = false, answerDone = false, playerDone = true;
 static volatile uint32_t playRate = 22050, stalls = 0, stallMs = 0, playedBytes = 0;
 static volatile uint32_t firstAnswerMs = 0;            // when the first word of the answer played
 
+// Interrupting: the button was let go when the question ended, so a new press while the answer
+// plays means "stop, I want to ask something else". Checked by the player task only.
+static bool (*interruptButton)() = nullptr;
+static volatile bool interrupted = false;
+static uint32_t pressStart = 0;
+
+static void checkInterrupt() {
+  if (interrupted || !interruptButton) return;
+  if (!interruptButton()) { pressStart = 0; return; }
+  if (!pressStart) pressStart = millis() | 1;    // | 1: never 0, which means "not pressed"
+  else if (millis() - pressStart >= INTERRUPT_PRESS_MS) {
+    interrupted = true;
+    Serial.println("[ask] button pressed: stopping the answer");
+  }
+}
+
+// Hands audio to the player; gives up if the answer was interrupted, as the player has stopped.
+static void sendPcm(const void* data, size_t n) {
+  const uint8_t* p = (const uint8_t*)data;
+  while (n && !interrupted) {
+    size_t sent = xStreamBufferSend(pcm, p, n, pdMS_TO_TICKS(20));   // waits while the buffer is full
+    p += sent;
+    n -= sent;
+  }
+}
+
 static void playerTask(void*) {
   int16_t raw[512];
   uint8_t* buf = (uint8_t*)raw;
@@ -81,6 +109,8 @@ static void playerTask(void*) {
   bool started = false, waiting = true;
   uint32_t stallStart = 0;
   for (;;) {
+    checkInterrupt();
+    if (interrupted) break;                      // stop talking now: the child wants to ask again
     size_t avail = xStreamBufferBytesAvailable(pcm);
     if (waiting) {                               // (re)fill before speaking
       size_t target = min((size_t)(playRate * 2 * PREBUFFER_MS / 1000), pcmCapacity - 1024);
@@ -138,6 +168,7 @@ class AnswerSink : public Stream {
   int peek() override { return -1; }
   size_t write(uint8_t b) override { return write(&b, 1); }
   size_t write(const uint8_t* p, size_t n) override {
+    if (interrupted) return 0;                   // refusing the rest makes HTTPClient hang up
     size_t left = n;
     while (left) {
       size_t used = step(p, left);
@@ -239,11 +270,11 @@ class AnswerSink : public Stream {
           for (size_t done = 0; done < k;) {
             size_t part = min(k - done, sizeof(decoded) / sizeof(decoded[0]));
             for (size_t i = 0; i < part; i++) decoded[i] = mulawDecode(p[done + i]);
-            xStreamBufferSend(pcm, decoded, part * 2, portMAX_DELAY);
+            sendPcm(decoded, part * 2);
             done += part;
           }
         } else {
-          xStreamBufferSend(pcm, p, k, portMAX_DELAY);   // blocks while the buffer is full
+          sendPcm(p, k);
         }
         have += k;
         if (have == need) {
@@ -354,13 +385,26 @@ AskResult askQuestion(bool (*buttonHeld)()) {
     stallMs = 0;
     playedBytes = 0;
     firstAnswerMs = 0;
+    interruptButton = buttonHeld;
+    interrupted = false;
+    pressStart = 0;
     xTaskCreatePinnedToCore(playerTask, "player", 4096, nullptr, 3, nullptr, 1);
     AnswerSink sink;
     int streamed = http.writeToStream(&sink);
-    if (streamed < 0) Serial.printf("[ask] answer stream stopped: %d %s\n", streamed, http.errorToString(streamed).c_str());
+    if (streamed < 0 && !interrupted)
+      Serial.printf("[ask] answer stream stopped: %d %s\n", streamed, http.errorToString(streamed).c_str());
     receiving = false;
     answerDone = true;
     while (!playerDone) delay(10);
+    interruptButton = nullptr;
+    if (interrupted) {
+      // Not a failure, so it isn't reported to the server's answer statistics
+      Serial.printf("[ask] interrupted after %.1f s of speech\n", playedBytes / 2.0f / playRate);
+      http.end();
+      waitFiller();
+      LittleFS.remove(BODY_PATH);
+      return ASK_INTERRUPTED;
+    }
     if (sink.framesReceived > 0) result = ASK_OK;
     float speech = playedBytes / 2.0f / playRate;
     int32_t latency = firstAnswerMs ? (int32_t)(firstAnswerMs - releaseMs) : -1;

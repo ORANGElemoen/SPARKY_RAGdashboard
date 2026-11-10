@@ -117,6 +117,12 @@ void loop() {
     sparkyIdle = false;                                      // no syncing while Sparky is busy
     previewUntil = 0;
     AskResult result = askQuestion(buttonHeld);              // listen -> think -> talk
+    if (result == ASK_INTERRUPTED) {                         // pressed while Sparky talked:
+      taps = 0;                                              // if still held, the next loop()
+      if (!buttonHeld()) facesShowMood(MOOD_IDLE);           // listens straight away; a quick
+      sparkyIdle = true;                                     // tap just stops Sparky talking
+      return;
+    }
     if (result == ASK_TOO_SHORT) {
       taps++;
       lastTap = millis();
