@@ -67,7 +67,6 @@ router = APIRouter(prefix="/api/v1", tags=["query"])
 def get_rag_service():
     """Get SimpleRAGService instance"""
     try:
-        from ..ollama_client import OllamaClient
         from ..repositories.factory import RepositoryFactory
         from ..services.simple_rag_service import SimpleRAGService
 
@@ -76,8 +75,10 @@ def get_rag_service():
         vector_repo = rag_repo.vector_search
         interaction_log_repo = rag_repo.interaction_log
 
-        # Get LLM client with faster timeout for better user experience
-        llm_client = OllamaClient(timeout=60)  # 1 minute instead of 3 minutes
+        # The model chosen in the admin dashboard: local by default, or Gemini online
+        from ..llm_factory import make_llm_client
+
+        llm_client = make_llm_client(timeout=60)  # 1 minute instead of 3 minutes
 
         # Create simple RAG service
         return SimpleRAGService(vector_repo, llm_client, interaction_log_repo)

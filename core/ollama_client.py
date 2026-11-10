@@ -115,6 +115,11 @@ class OllamaClient:
             default_model_key = llm_config.get("default_model", "tinyllama")
             models = llm_config.get("models", {})
 
+            # An online model (Gemini) isn't an Ollama model: use the local model it names
+            # as its stand-in, which also answers whenever the online one can't
+            entry = models.get(default_model_key) or {}
+            if entry.get("provider", "ollama") != "ollama":
+                default_model_key = entry.get("local_model", "")
             if default_model_key in models:
                 model_name = models[default_model_key]["name"]
                 logger.debug(
