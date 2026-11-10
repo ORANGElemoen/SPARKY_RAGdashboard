@@ -248,15 +248,16 @@ class RAGConfig:
             os.getenv("RAG_REQUIRE_SOURCES", "true").lower() == "true"
         )
         self.max_query_length = int(os.getenv("RAG_MAX_QUERY_LENGTH", "500"))
-        # Follow-up questions ("how does that work?") pull in this many
-        # prior turns from the same session as extra prompt context
+        # Sparky remembers the current conversation, up to this many prior turns.
+        # Ten turns measured about 3,100 prompt tokens, within OLLAMA_NUM_CTX.
         self.max_conversation_turns = int(
-            os.getenv("RAG_MAX_CONVERSATION_TURNS", "3")
+            os.getenv("RAG_MAX_CONVERSATION_TURNS", "10")
         )
-        # A board keeps one session for life, so a turn this old is a different conversation,
-        # maybe with a different child. Keeping it also let the model repeat an old mistake.
-        self.max_conversation_minutes = int(
-            os.getenv("RAG_MAX_CONVERSATION_MINUTES", "30")
+        # A pause longer than this ends a conversation. A board keeps one session for life, so
+        # the next question after a long pause is probably a new conversation, maybe with a
+        # different child. Keeping old turns also let the model repeat an old mistake.
+        self.conversation_gap_minutes = int(
+            os.getenv("RAG_CONVERSATION_GAP_MINUTES", "60")
         )
 
         logger.info(
@@ -313,7 +314,7 @@ class SimpleRAGService:
             if session_id and self.interaction_log_repo:
                 conversation_history = await self.interaction_log_repo.get_recent_turns(
                     session_id, limit=self.config.max_conversation_turns,
-                    max_age_minutes=self.config.max_conversation_minutes,
+                    max_gap_minutes=self.config.conversation_gap_minutes,
                 )
 
             # 3. Search for relevant documents
@@ -676,7 +677,7 @@ class SimpleRAGService:
             if session_id and self.interaction_log_repo:
                 history = await self.interaction_log_repo.get_recent_turns(
                     session_id, limit=self.config.max_conversation_turns,
-                    max_age_minutes=self.config.max_conversation_minutes,
+                    max_gap_minutes=self.config.conversation_gap_minutes,
                 )
             search_results = await self._search_with_history(query, history)
             prep = self._prepare_answer(query, search_results, history, strings)

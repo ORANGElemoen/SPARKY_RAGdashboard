@@ -320,11 +320,11 @@ def test_a_streamed_answer_speaks_the_must_say_line_before_the_closing_question(
 def test_the_must_say_line_is_spoken_once_per_conversation():
     first = stream(rag.SimpleRAGService(OneSheet(), FakeLLM(ANSWER)), "How do I make a water filter?")
     spoken = [p for k, p, _ in first if k == "sentence"]
-    assert spoken == SENTENCES + [MUST]                   # added after what the AI said
-    assert first[-1][1]["spoken_answer"].endswith(MUST)
+    assert spoken == SENTENCES[:-1] + [MUST, SENTENCES[-1]]  # before the closing question
+    assert MUST in first[-1][1]["spoken_answer"]
 
     class SaidBefore:                                     # a follow-up in the same conversation
-        async def get_recent_turns(self, session_id, limit, max_age_minutes=None):
+        async def get_recent_turns(self, session_id, limit, max_gap_minutes=None):
             return [{"question_text": "How do I make a water filter?", "answer_text": "... " + MUST}]
 
         async def log_interaction(self, *args, **kwargs):

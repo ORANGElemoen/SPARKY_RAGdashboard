@@ -4,6 +4,7 @@ Ollama Client for Local LLM Integration
 Handles communication with Ollama API for answer generation using official Ollama Python client
 """
 import logging
+import os
 import time
 from datetime import datetime
 from pathlib import Path
@@ -38,6 +39,12 @@ except ImportError:
 # Keep the model in memory between questions. Ollama's default (5 min) unloads it, and the
 # next question then waits ~60 s for the reload - longer than Sparky waits for an answer.
 KEEP_ALIVE = "24h"
+
+# How much text the model reads at once (prompt plus answer), in tokens. Ollama's default of
+# 4096 only just fits ten remembered questions, and anything over it is cut from the START of
+# the prompt, which is where Sparky's instructions are. Every call must send the same value,
+# or Ollama reloads the model between calls. 8192 uses about 0.3 GB more graphics memory.
+NUM_CTX = int(os.getenv("OLLAMA_NUM_CTX", "8192"))
 
 
 class OllamaClient:
@@ -194,7 +201,7 @@ class OllamaClient:
                 response = self.client.generate(
                     model=self.model,
                     prompt="Hello",
-                    options={"num_predict": 1, "temperature": 0.1},
+                    options={"num_predict": 1, "temperature": 0.1, "num_ctx": NUM_CTX},
                     stream=False,
                     think=False,  # Qwen 3.x would spend the one token on hidden thinking
                     keep_alive=KEEP_ALIVE,
@@ -204,7 +211,7 @@ class OllamaClient:
                 payload = {
                     "model": self.model,
                     "prompt": "Hello",
-                    "options": {"num_predict": 1, "temperature": 0.1},
+                    "options": {"num_predict": 1, "temperature": 0.1, "num_ctx": NUM_CTX},
                     "stream": False,
                     "think": False,
                     "keep_alive": KEEP_ALIVE,
@@ -414,6 +421,7 @@ class OllamaClient:
             "keep_alive": KEEP_ALIVE,
             "options": {
                 "num_predict": max_tokens,
+                "num_ctx": NUM_CTX,
                 "temperature": temperature,
                 "top_p": 0.9,
                 "top_k": 40,
@@ -509,6 +517,7 @@ class OllamaClient:
                     prompt=prompt,
                     options={
                         "num_predict": max_tokens,
+                        "num_ctx": NUM_CTX,
                         "temperature": temperature,
                         "top_p": 0.9,
                         "top_k": 40,
@@ -565,6 +574,7 @@ class OllamaClient:
                     "prompt": prompt,
                     "options": {
                         "num_predict": max_tokens,
+                        "num_ctx": NUM_CTX,
                         "temperature": temperature,
                         "top_p": 0.9,
                         "top_k": 40,
@@ -718,6 +728,7 @@ Answer:"""
                 "prompt": prompt,
                 "options": {
                     "num_predict": max_tokens,
+                    "num_ctx": NUM_CTX,
                     "temperature": temperature,
                     "top_p": 0.9,
                 },
@@ -809,7 +820,7 @@ Answer:"""
                             json={
                                 "model": self.model,
                                 "prompt": "Hello, respond with just 'OK'",
-                                "options": {"num_predict": 5, "temperature": 0.1},
+                                "options": {"num_predict": 5, "temperature": 0.1, "num_ctx": NUM_CTX},
                                 "stream": False,
                                 # Thinking models would spend all 5 tokens thinking and
                                 # return an empty answer, so the check reported "Unavailable"

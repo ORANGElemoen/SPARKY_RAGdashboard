@@ -121,34 +121,46 @@ class InteractionLogRepository(SQLiteRepository):
             logger.warning(f"Interaction logging failed (non-fatal): {e}")
 
     async def get_recent_turns(
-        self, session_id: str, limit: int = 4, max_age_minutes: Optional[int] = None
+        self, session_id: str, limit: int = 4, max_gap_minutes: Optional[int] = None
     ) -> List[Dict[str, str]]:
-        """Most recent turns for a session, oldest first (for prompt context).
+        """The current conversation's latest turns for a session, oldest first.
 
         Only question_text/answer_text are returned - this is conversation
-        memory, not a review export, so it stays minimal. With max_age_minutes,
-        older turns are left out: they belong to an earlier conversation.
+        memory, not a review export, so it stays minimal. With max_gap_minutes,
+        a pause longer than that ends a conversation: the turns before it are
+        left out, and after a long silence nothing is remembered at all. A
+        child who keeps asking every few minutes keeps the whole conversation,
+        up to `limit` turns.
         """
-        age_filter = "AND timestamp >= datetime('now', ?)" if max_age_minutes else ""
-        age_param = (f"-{int(max_age_minutes)} minutes",) if max_age_minutes else ()
         try:
             with self.get_connection() as conn:
                 cursor = conn.execute(
-                    f"""
-                    SELECT question_text, answer_text
+                    """
+                    SELECT question_text, answer_text,
+                           (julianday('now') - julianday(timestamp)) * 1440 AS minutes_ago
                     FROM interaction_log
-                    WHERE session_id = ? {age_filter}
-                    ORDER BY timestamp DESC
+                    WHERE session_id = ?
+                    ORDER BY timestamp DESC, id DESC
                     LIMIT ?
                     """,
-                    (session_id, *age_param, limit),
+                    (session_id, limit),
                 )
-                turns = [dict(row) for row in cursor.fetchall()]
-                turns.reverse()
-                return turns
+                rows = [dict(row) for row in cursor.fetchall()]
         except Exception as e:
             logger.error(f"Failed to load conversation turns for session: {e}")
             return []
+
+        # Newest first: keep turns until the first pause longer than the gap,
+        # counting the pause between the newest turn and now
+        turns, newer_minutes_ago = [], 0.0
+        for row in rows:
+            minutes_ago = row.pop("minutes_ago") or 0.0
+            if max_gap_minutes and minutes_ago - newer_minutes_ago > max_gap_minutes:
+                break
+            turns.append(row)
+            newer_minutes_ago = minutes_ago
+        turns.reverse()
+        return turns
 
     async def get_interaction(self, interaction_id: int) -> Optional[Dict[str, Any]]:
         """Fetch one logged interaction by id, or None."""
