@@ -6,6 +6,7 @@ Clean, maintainable RAG system with AI answers only
 import asyncio
 import logging
 import os
+import random
 import re
 import threading
 from datetime import datetime
@@ -74,6 +75,26 @@ DEFAULT_LANGUAGE_STRINGS = {
     ),
     "must_say_marker": "Sparky always says:",
     "stt_hotwords": "Sparky grass science experiment battery lemon gravity",
+    # What Sparky says first, by the kind of message (see MESSAGE_TYPE_PROMPT); voice only
+    "openers": {
+        "question": ["Good question!", "Ooh, great question!", "Hmm, let me think!"],
+        "answer": ["Okay, let's see!", "Hmm, let's see!"],
+        "statement": [],
+    },
+    # Added under the child's message in the prompt, by the kind of message
+    "message_type_notes": {
+        "question": "",
+        "answer": (
+            "(The child is replying to what you asked last. If you asked a quiz question with a "
+            "right answer, tell them kindly whether they are right and why. If you asked what "
+            "they want, like whether to hear more, just do what they chose.)"
+        ),
+        "statement": (
+            "(The child is telling you something, not asking a question. Reply warmly to what "
+            "they said.)"
+        ),
+    },
+    "opener_note": "(You have already said \"{opener}\" out loud. Carry straight on without repeating it.)",
 }
 
 
@@ -187,6 +208,28 @@ def _must_say(text: str, marker: Optional[str]) -> Optional[str]:
     return found.group(1) if found else None
 
 
+def _is_repeated_opener(sentence: str, strings: Dict[str, Any]) -> bool:
+    """True if the model began with its own "Good question!" after Sparky already said an opener.
+    Matches the language file's openers, and its repeated_opener_pattern for other wordings."""
+    def plain(s: str) -> str:
+        return " ".join(re.sub(r"[^\w\s]", " ", s.lower()).split())
+    said = plain(sentence)
+    if any(said == plain(o) for kind in (strings.get("openers") or {}).values() for o in kind or []):
+        return True
+    pattern = strings.get("repeated_opener_pattern")
+    try:
+        return bool(pattern and re.fullmatch(pattern, said))
+    except re.error:
+        return False
+
+
+def _strip_repeated_opener(text: str, strings: Dict[str, Any]) -> str:
+    sentences = _split_spoken(text)
+    while sentences and _is_repeated_opener(sentences[0], strings):
+        sentences.pop(0)
+    return " ".join(sentences)
+
+
 def _add_must_say(answer: str, must_say: str) -> str:
     """Add a safety line before the closing question, so the answer still ends on the question."""
     sentences = _SENTENCE_RE.split(answer.strip())
@@ -205,6 +248,18 @@ Child's new message: {message}
 Reply SAME if the message only makes sense with the earlier conversation, or is about the same activity (for example asking for help, the next step, a repeat, or why it happened).
 Reply NEW if it asks about something else, even a science topic.
 Reply with one word: SAME or NEW."""
+
+# What kind of message the child said, so Sparky doesn't say "Good question!" to an answer
+MESSAGE_TYPES = ("question", "answer", "statement")
+MESSAGE_TYPE_PROMPT = """A child is talking to Sparky, a science tutor robot. Decide what kind of message the child just said.
+
+Sparky's last reply: {last_reply}
+Child's message: {message}
+
+Reply ANSWER if Sparky's last reply asked something and the child is replying to it: a guess, a number, a choice, yes or no, "tell me more", or "I don't know".
+Reply QUESTION if the child asks Sparky a new question of their own.
+Reply STATEMENT if the child is telling Sparky something, for example their name, what happened or how they feel.
+Reply with one word: ANSWER, QUESTION or STATEMENT."""
 
 
 # Sentence boundary for spoken answers: end punctuation followed by space, so "3.5" stays whole.
@@ -317,19 +372,25 @@ class SimpleRAGService:
                     max_gap_minutes=self.config.conversation_gap_minutes,
                 )
 
-            # 3. Search for relevant documents
-            search_results = await self._search_with_history(query, conversation_history)
+            # 3. Search for relevant documents, and work out what kind of message this is
+            search_results, message_type, opener = await self._understand(
+                query, conversation_history, spoken=query_type == "voice"
+            )
 
             # 4. Generate AI answer (grounded in documents if any were found,
             # otherwise the tutor falls back to its own general knowledge)
             ai_response = await self._generate_answer(
-                query, search_results, conversation_history
+                query, search_results, conversation_history, message_type, opener
             )
+            if opener:
+                ai_response = {**ai_response, "text": f"{opener} {ai_response['text']}",
+                               "spoken_text": f"{opener} {ai_response.get('spoken_text', ai_response['text'])}"}
 
             # 5. Format response
             response = {
                 "answer": ai_response["text"],
                 "spoken_answer": ai_response.get("spoken_text", ai_response["text"]),
+                "message_type": message_type,
                 "sources": ai_response["sources"],
                 "timestamp": datetime.utcnow().isoformat(),
                 "query": query,
@@ -453,6 +514,46 @@ class SimpleRAGService:
         # better than a wrong document steering the answer and being cited as its source.
         return (reply or "").strip().upper().startswith("SAME")
 
+    async def _classify_message(self, query: str, history: Optional[List[Dict[str, str]]]) -> str:
+        """Ask the model whether the child asked a question, answered Sparky's question or just
+        told Sparky something. One of MESSAGE_TYPES. If the model can't say, punctuation decides."""
+        sources_marker = f"\n\n{load_language_strings()['sources_label']}:"
+        last_reply = ""
+        if history:
+            last_reply = (history[-1].get("answer_text") or "").split(sources_marker)[0].strip()
+        prompt = MESSAGE_TYPE_PROMPT.format(
+            last_reply=last_reply[-400:] or "(nothing yet: this is the start of the conversation)",
+            message=query,
+        )
+        try:
+            reply = await asyncio.to_thread(
+                self.llm_client.generate_answer, query=prompt, context="", max_tokens=4,
+                temperature=0.0, max_retries=1, is_complete_prompt=True,
+            )
+            word = (reply or "").strip().upper()
+            for kind in MESSAGE_TYPES:
+                if word.startswith(kind.upper()):
+                    return kind
+            logger.info(f"Unclear message type {word[:20]!r}, guessing from punctuation")
+        except Exception as e:
+            logger.warning(f"Message type check failed, guessing from punctuation: {e}")
+        if query.strip().endswith("?"):
+            return "question"
+        return "answer" if last_reply.endswith("?") else "statement"
+
+    async def _understand(self, query: str, history: List[Dict[str, str]], spoken: bool):
+        """Search the sheets and classify the message at the same time. Returns
+        (search_results, message_type, opener); the opener is only for spoken answers."""
+        search_results, message_type = await asyncio.gather(
+            self._search_with_history(query, history), self._classify_message(query, history)
+        )
+        opener = ""
+        if spoken:
+            choices = (load_language_strings().get("openers") or {}).get(message_type) or []
+            opener = random.choice(choices) if choices else ""
+        logger.info(f"Message type: {message_type}{f', opener: {opener!r}' if opener else ''}")
+        return search_results, message_type, opener
+
     async def _search_documents(self, query: str) -> List[Dict[str, Any]]:
         """Search for relevant documents"""
         try:
@@ -498,6 +599,8 @@ class SimpleRAGService:
         search_results: List[Dict],
         conversation_history: Optional[List[Dict[str, str]]],
         strings: Dict[str, str],
+        message_type: str = "question",
+        opener: str = "",
     ) -> Dict[str, Any]:
         """Everything before the LLM call: maths note, prompt and sources.
 
@@ -512,7 +615,12 @@ class SimpleRAGService:
         except Exception as e:
             logger.warning(f"Maths helper failed, answering without it: {e}")
             note = ""
-        query = f"{query}\n{note}" if note else query
+        # What kind of message this is, and the opener already spoken, so the model replies to
+        # an answer as an answer and doesn't say "Good question!" a second time
+        notes = [note, (strings.get("message_type_notes") or {}).get(message_type, "")]
+        if opener and strings.get("opener_note"):
+            notes.append(strings["opener_note"].format(opener=opener))
+        query = "\n".join([query] + [n for n in notes if n])
         history_block = self._build_conversation_history_block(conversation_history or [], strings)
 
         if not search_results:
@@ -525,7 +633,7 @@ class SimpleRAGService:
             )
             return {"prompt": prompt, "sources": [], "confidence": 0.0, "used_general_knowledge": True,
                     "temperature": 0.6,  # More creative/exploratory for open-ended teaching
-                    "cacheable": False, "context": "", "must_say": None}
+                    "cacheable": False, "context": "", "must_say": None, "opener": opener}
 
         # Prepare context from the actual retrieved document chunks
         search_results = _whole_results_first(search_results)
@@ -573,10 +681,12 @@ class SimpleRAGService:
                 "confidence": max(r["similarity"] for r in search_results),
                 "used_general_knowledge": False,
                 "temperature": 0.4,  # Some room for a fun, engaging tone
-                "cacheable": True, "context": context, "must_say": must_say}
+                "cacheable": True, "context": context, "must_say": must_say, "opener": opener}
 
     def _finish_answer(self, response: str, prep: Dict[str, Any], strings: Dict[str, str]) -> Dict[str, Any]:
         """Everything after the LLM call: tidy the text, soften refusals, add citations."""
+        if response and prep.get("opener"):
+            response = _strip_repeated_opener(response, strings)  # Sparky already said one
         answer_text = response if response else strings["no_answer_generated"]
         trimmed = _trim_to_complete_sentence(answer_text)
         answer_text = _soften_refusal(trimmed, strings)
@@ -612,11 +722,14 @@ class SimpleRAGService:
         query: str,
         search_results: List[Dict],
         conversation_history: Optional[List[Dict[str, str]]] = None,
+        message_type: str = "question",
+        opener: str = "",
     ) -> Dict[str, Any]:
         """Generate the whole AI answer (grounded in documents if any were found)"""
         strings = load_language_strings()
         try:
-            prep = self._prepare_answer(query, search_results, conversation_history, strings)
+            prep = self._prepare_answer(query, search_results, conversation_history, strings,
+                                        message_type, opener)
             model = getattr(self.llm_client, "model", "")
             if prep["cacheable"]:
                 cached_response = self.cache.get(prep["prompt"], "", extra=model)
@@ -679,14 +792,18 @@ class SimpleRAGService:
                     session_id, limit=self.config.max_conversation_turns,
                     max_gap_minutes=self.config.conversation_gap_minutes,
                 )
-            search_results = await self._search_with_history(query, history)
-            prep = self._prepare_answer(query, search_results, history, strings)
+            search_results, message_type, opener = await self._understand(
+                query, history, spoken=query_type == "voice"
+            )
+            prep = self._prepare_answer(query, search_results, history, strings, message_type, opener)
         except Exception as e:
             logger.error(f"Query processing failed: {e}")
             yield ("done", self._error_response(f"Processing failed: {str(e)}"))
             return
 
         yield ("meta", {k: prep[k] for k in ("sources", "confidence", "used_general_knowledge")})
+        if opener:
+            yield ("sentence", opener)  # spoken while the model is still writing the answer
 
         model = getattr(self.llm_client, "model", "")
         cached = self.cache.get(prep["prompt"], "", extra=model) if prep["cacheable"] else None
@@ -694,7 +811,7 @@ class SimpleRAGService:
         if cached:
             result = cached
         else:
-            text, refused, stop = "", False, threading.Event()
+            text, refused, stop, used = "", False, threading.Event(), 0
             try:
                 async for chunk in self._stream_llm(prep, stop):
                     text += chunk
@@ -702,7 +819,11 @@ class SimpleRAGService:
                     # This might be the closing question, which a safety line has to go before
                     if prep.get("must_say") and finished and finished[-1].endswith("?"):
                         finished = finished[:-1]
-                    for sentence in finished[len(spoken):]:
+                    for sentence in finished[used:]:
+                        used += 1
+                        # The model's own "Good question!" after Sparky already said an opener
+                        if not spoken and opener and _is_repeated_opener(sentence, strings):
+                            continue
                         # A canned refusal shows in the first sentence: stop and redirect instead
                         if not spoken and _soften_refusal(sentence, strings) != sentence:
                             refused = True
@@ -728,9 +849,11 @@ class SimpleRAGService:
         for sentence in _split_spoken(result["spoken_text"])[len(spoken):]:
             yield ("sentence", sentence)
 
+        lead = f"{opener} " if opener else ""
         response = {
-            "answer": result["text"],
-            "spoken_answer": result.get("spoken_text", result["text"]),
+            "answer": lead + result["text"],
+            "spoken_answer": lead + result.get("spoken_text", result["text"]),
+            "message_type": message_type,
             "sources": result["sources"],
             "timestamp": datetime.utcnow().isoformat(),
             "query": query,

@@ -165,3 +165,20 @@ maths_words:
   joiners: [and]
 # Words the speech recogniser should expect: Sparky's name and common science words
 stt_hotwords: "Sparky grass science experiment battery lemon gravity"
+
+# The first thing Sparky says out loud, by the kind of message the child said (the server's
+# AI check decides: question, answer or statement). An empty list says nothing extra.
+# Voice only. The board's own button-release lines play before anyone knows what was said.
+openers:
+  question: ["Good question!", "Ooh, great question!", "Hmm, let me think!"]
+  answer: ["Okay, let's see!", "Hmm, let's see!"]
+  statement: []
+# Added under the child's message in the prompt, so the reply fits the kind of message
+message_type_notes:
+  question: ""
+  answer: "(The child is replying to what you asked last. If you asked a quiz question with a right answer, tell them kindly whether they are right and why. If you asked what they want, like whether to hear more, just do what they chose.)"
+  statement: "(The child is telling you something, not asking a question. Reply warmly to what they said.)"
+# The model's own "Great question!" after an opener is removed. Matched against the
+# sentence in lower case, without punctuation.
+repeated_opener_pattern: '((oh|ooh|wow|what|that s|that is|such) )*(a |an )?(really |very )?(good|great|excellent|fantastic|awesome|interesting|wonderful|amazing|cool|super) question'
+opener_note: "(You have already said \"{opener}\" out loud. Carry straight on without repeating it.)"

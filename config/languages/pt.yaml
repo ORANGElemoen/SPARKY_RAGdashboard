@@ -148,3 +148,14 @@ maths_correct: "acertou"
 maths_incorrect: "ainda não acertou"
 # Words the speech recogniser should expect: Sparky's name and common science words
 stt_hotwords: "Sparky relva ciência experiência bateria limão gravidade"
+
+# O que o Sparky diz primeiro, conforme o tipo de mensagem (pergunta, resposta ou afirmação). Só falado.
+openers:
+  question: ["Boa pergunta!", "Que ótima pergunta!", "Hmm, deixa-me pensar!"]
+  answer: ["Está bem, vamos ver!", "Hmm, vamos ver!"]
+  statement: []
+message_type_notes:
+  question: ""
+  answer: "(A criança está respondendo ao que você perguntou por último. Se foi uma pergunta de quiz com uma resposta certa, diga com carinho se ela acertou e por quê. Se você perguntou o que ela quer, como ouvir mais, faça simplesmente o que ela escolheu.)"
+  statement: "(A criança está contando algo, não fazendo uma pergunta. Responda com carinho ao que ela disse.)"
+opener_note: "(Você já disse \"{opener}\" em voz alta. Continue direto, sem repetir.)"

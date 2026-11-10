@@ -94,6 +94,12 @@ def get_voice_service():
         )
 
 
+def _heard_words(transcript: str) -> bool:
+    """True if the recogniser heard any word or number. Short replies count: children answer
+    Sparky's questions with "8", "No" or "Ja", which a minimum length used to throw away."""
+    return any(ch.isalnum() for ch in transcript)
+
+
 @router.post("/query")
 async def voice_query(
     audio: UploadFile = File(...),
@@ -157,7 +163,7 @@ async def voice_query(
             used_general_knowledge = False
             confidence = 0.0
 
-            if len(transcript.strip()) < 3:
+            if not _heard_words(transcript):
                 answer_text = strings["voice_retry_prompt"]
                 spoken_answer = answer_text
             else:
@@ -282,7 +288,7 @@ async def _stream_answer_v2(audio_bytes, voice_service, rag_service, session_id,
             transcript = await asyncio.to_thread(voice_service.transcribe, audio_bytes)
             logger.info(f"Voice transcript: {transcript[:100]}")
             meta["transcript"] = transcript
-            if len(transcript.strip()) < 3:
+            if not _heard_words(transcript):
                 answer_text = strings["voice_retry_prompt"]
             else:
                 async for kind, payload in rag_service.answer_query_stream(

@@ -128,8 +128,12 @@ def test_v2_sends_details_first_then_audio_then_a_closing_summary():
     meta, trailer = json.loads(blocks[0]), json.loads(blocks[-1])
     assert meta["protocol_version"] == 2 and meta["transcript"] == "Why is the sky blue?"
     assert meta["frame_count"] is None                 # not known yet while streaming
-    assert all(b[:4] == b"RIFF" for b in blocks[1:-1]) and len(blocks) - 2 == len(SENTENCES)
-    assert trailer == {"protocol_version": 2, "answer_text": " ".join(SENTENCES), "frame_count": len(SENTENCES)}
+    # The transcript is a question, so a question opener ("Good question!") is spoken first
+    assert all(b[:4] == b"RIFF" for b in blocks[1:-1]) and len(blocks) - 2 == len(SENTENCES) + 1
+    opener = trailer["answer_text"][:-len(" ".join(SENTENCES))].strip()
+    assert opener in rag.load_language_strings()["openers"]["question"]
+    assert trailer == {"protocol_version": 2, "answer_text": f"{opener} " + " ".join(SENTENCES),
+                       "frame_count": len(SENTENCES) + 1}
 
 
 def _mulaw_decode(byte):
@@ -144,7 +148,7 @@ def test_the_internet_route_gets_compressed_audio():
                        headers={"Accept": "application/x-tutor-voice; version=2; codec=mulaw"},
                        files={"audio": ("q.wav", _wav(), "audio/wav")})
     frames = _blocks(r.content)[1:-1]
-    assert len(frames) == len(SENTENCES)
+    assert len(frames) == len(SENTENCES) + 1  # the opener, then the answer
     for frame in frames:
         assert frame[:4] == b"RIFF" and frame[36:40] == b"data"
         assert struct.unpack_from("<HHI", frame, 20) == (7, 1, 16000)      # mu-law, mono, 16 kHz
@@ -173,7 +177,7 @@ def test_v1_is_unchanged_for_older_firmware():
                        files={"audio": ("q.wav", _wav(), "audio/wav")})
     blocks = _blocks(r.content)
     meta = json.loads(blocks[0])
-    assert meta["protocol_version"] == 1 and meta["frame_count"] == len(blocks) - 1 == len(SENTENCES)
+    assert meta["protocol_version"] == 1 and meta["frame_count"] == len(blocks) - 1 == len(SENTENCES) + 1
 
 
 # ---------------------------------------------------------------- follow-up questions

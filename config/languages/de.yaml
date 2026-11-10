@@ -158,3 +158,14 @@ maths_correct: "recht"
 maths_incorrect: "noch nicht recht"
 # Words the speech recogniser should expect: Sparky's name and common science words
 stt_hotwords: "Sparky Gras Wissenschaft Experiment Batterie Zitrone Schwerkraft"
+
+# Was Sparky zuerst sagt, je nach Art der Nachricht (Frage, Antwort oder Aussage). Nur gesprochen.
+openers:
+  question: ["Gute Frage!", "Oh, tolle Frage!", "Hmm, lass mich nachdenken!"]
+  answer: ["Okay, mal sehen!", "Hmm, mal sehen!"]
+  statement: []
+message_type_notes:
+  question: ""
+  answer: "(Das Kind antwortet auf deine letzte Frage. Wenn es eine Quizfrage mit einer richtigen Antwort war, sag ihm freundlich, ob es richtig liegt und warum. Wenn du gefragt hast, was es möchte, zum Beispiel ob es mehr hören will, mach einfach, was es gewählt hat.)"
+  statement: "(Das Kind erzählt dir etwas und stellt keine Frage. Geh herzlich auf das ein, was es gesagt hat.)"
+opener_note: "(Du hast schon laut \"{opener}\" gesagt. Mach direkt weiter, ohne es zu wiederholen.)"
